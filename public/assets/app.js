@@ -1,209 +1,247 @@
+/* assets/app.js — SmartTrader AI (tempo real via /api/quote) */
+(function () {
+  var REFRESH_MS  = 6000;
+  var HISTORY_LEN = 120;
+  var DEFAULTS    = ["TSLA","NVDA","AAPL","AMZN","MSFT","ITUB4","VALE3","PETR4"];
 
-(function(){
-  // Estado base
   var state = {
-    active: 'TSLA',
-    data: {
-      TSLA:{px:456.10, chg:0.003, series:[]},
-      NVDA:{px:181.93, chg:0.021, series:[]},
-      AAPL:{px:197.45, chg:-0.0082, series:[]},
-      AMZN:{px:169.80, chg:0.004, series:[]},
-      VALE3:{px:62.35, chg:0.006, series:[]},
-      PETR4:{px:39.20, chg:-0.012, series:[]}
-    },
-    positions: {}, // {SYM:{qty, avg}}
-    alerts: []     // {sym, cond, val}
+    active: "TSLA",
+    data: {},        // {SYM:{px, chg, series:[]}}
+    positions: {},   // {SYM:{qty, avg}}
+    alerts: []       // [{sym, cond, val, _hit?}]
   };
 
-  // Util
   function $(id){ return document.getElementById(id); }
-  function fmt(v){ return (v>=0?'+':'') + (v*100).toFixed(2) + '%'; }
-  function money(v){ var s=v<0?'-':''; return s+'$'+Math.abs(v).toFixed(2); }
-
-  // Relógio
-  function nowUTC(){ return new Date(Date.now()).toUTCString().split(' ')[4]; }
-  setInterval(function(){ $('clock').textContent = 'UTC — ' + nowUTC(); }, 1000);
-
-  // Lista de tickers
-  var list = $('list');
-  function drawList(q){
-    list.innerHTML='';
-    Object.keys(state.data)
-    .filter(function(s){ return (q||'') === '' || s.toLowerCase().indexOf(q.toLowerCase())>-1; })
-    .forEach(function(sym){
-      var d = state.data[sym];
-      var row = document.createElement('div');
-      row.className = 'ticker';
-      row.innerHTML = '<div><strong>'+sym+'</strong></div><div class="pct '+(d.chg>=0?'up':'down')+'">'+fmt(d.chg)+'</div>';
-      row.onclick = function(){ state.active=sym; drawList($('q').value); refresh(); };
-      list.appendChild(row);
-    });
+  function fmtPct(v){ return (v>=0?"+":"") + ((v||0)*100).toFixed(2) + "%"; }
+  function isBR(sym){ return /\d$/.test(sym); }
+  function moneyOf(sym, v){
+    var fmt = isBR(sym)
+      ? new Intl.NumberFormat("pt-BR", { style:"currency", currency:"BRL" })
+      : new Intl.NumberFormat("en-US", { style:"currency", currency:"USD" });
+    var s = fmt.format(Math.abs(v||0));
+    return (v<0?"-":"") + s.replace("-", "");
   }
-  $('q').addEventListener('input', function(e){ drawList(e.target.value); });
 
-  // Série simulada
-  var N=120;
-  Object.values = Object.values || function(o){ return Object.keys(o).map(function(k){return o[k];}); };
-  Object.values(state.data).forEach(function(d){
-    if(d.series.length===0){
-      var x=d.px;
-      for(var i=0;i<N;i++){ x = x * (1 + (Math.random()-0.5)*0.002); d.series.push(x); }
+  document.title = "SmartTrader AI";
+
+  function tickClock(){ $("clock").textContent = "UTC — " + new Date().toISOString().slice(11,19) + "Z"; }
+  tickClock(); setInterval(tickClock, 1000);
+
+  DEFAULTS.forEach(function(s){ state.data[s] = { px:null, chg:0, series:[] }; });
+
+  var list = $("list");
+  function drawList(q){
+    list.innerHTML = "";
+    var query = (q||"").toLowerCase();
+    Object.keys(state.data)
+      .filter(function(s){ return !query || s.toLowerCase().indexOf(query)>-1; })
+      .forEach(function(sym){
+        var d = state.data[sym] || {};
+        var row = document.createElement("div");
+        row.className = "ticker" + (sym===state.active ? " active" : "");
+        var flag = isBR(sym) ? ' <span title="Brasil">🇧🇷</span>' : '';
+        row.innerHTML =
+          '<div><strong>'+sym+'</strong>'+flag+'</div>'+
+          '<div class="pct '+((d.chg||0)>=0?'up':'down')+'">'+fmtPct(d.chg||0)+'</div>';
+        row.onclick = function(){
+          state.active = sym; drawList($("q").value); refresh(true);
+        };
+        list.appendChild(row);
+      });
+  }
+  $("q").addEventListener("input", function(e){ drawList(e.target.value); });
+  $("q").addEventListener("keydown", function(e){
+    if(e.key==="Enter"){
+      var sym = e.target.value.trim().toUpperCase();
+      if(sym){
+        if(!state.data[sym]) state.data[sym] = { px:null, chg:0, series:[] };
+        state.active = sym; e.target.blur(); drawList(sym); refresh(true);
+      }
     }
   });
 
-  // Gráfico
-  var canvas = $('chart'), ctx = canvas.getContext('2d');
-  function drawChart(sym){
-    var d = state.data[sym], W = canvas.width, H = canvas.height;
-    ctx.clearRect(0,0,W,H);
-    var min = Math.min.apply(null,d.series), max = Math.max.apply(null,d.series);
-    var xstep = W/(d.series.length-1);
-    ctx.beginPath(); ctx.lineWidth=2; ctx.strokeStyle='#00ffa3';
-    d.series.forEach(function(v,i){
-      var x = i*xstep;
-      var y = H - ((v-min)/(max-min+1e-9))*(H-10) - 5;
-      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  var canvas = $("chart"), ctx = canvas.getContext("2d");
+  function resizeCanvas() {
+    var rect = canvas.getBoundingClientRect();
+    var cssW = Math.max(1, Math.floor(rect.width || canvas.clientWidth || 600));
+    var cssH = Math.max(1, Math.floor(rect.height || 260));
+    var dpr  = (window.devicePixelRatio || 1);
+    canvas.width  = cssW * dpr;
+    canvas.height = cssH * dpr;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+    canvas._cssW = cssW; canvas._cssH = cssH;
+  }
+  window.addEventListener("resize", function () { resizeCanvas(); drawChart(state.active); });
+  resizeCanvas();
+
+  function drawChart(sym) {
+    var d = state.data[sym] || { series: [] };
+    var W = canvas._cssW || 600, H = canvas._cssH || 260;
+    ctx.clearRect(0, 0, W, H);
+
+    var series = d.series || [];
+    if (!series.length) return;
+
+    if (series.length === 1) {
+      var y = Math.floor(H/2);
+      ctx.beginPath(); ctx.lineWidth = 2; ctx.strokeStyle = "#00ffa3";
+      ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+      return;
+    }
+
+    var min = Math.min.apply(null, series);
+    var max = Math.max.apply(null, series);
+    if (!isFinite(min) || !isFinite(max) || min === max) { min=(d.px||0)-1; max=(d.px||0)+1; }
+
+    var xstep = W / Math.max(1, series.length - 1);
+    ctx.beginPath(); ctx.lineWidth = 2; ctx.strokeStyle = "#00ffa3";
+    series.forEach(function (v, i) {
+      var x = i * xstep;
+      var y = H - ((v - min) / (max - min + 1e-9)) * (H - 10) - 5;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     });
     ctx.stroke();
   }
 
-  // Ticker de preços simulado
-  setInterval(function(){
-    Object.keys(state.data).forEach(function(sym){
-      var d = state.data[sym];
-      var last = d.series[d.series.length-1];
-      var next = last * (1 + (Math.random()-0.48)*0.004);
-      d.series.push(next); if(d.series.length>N) d.series.shift();
-      d.chg = (next/d.series[0]-1);
-      d.px = next;
-    });
-    refresh();
-    checkAlerts();
-  }, 1200);
+  async function fetchQuote(sym){
+    try{
+      var r = await fetch('/api/quote?symbol='+encodeURIComponent(sym)+'&_='+Date.now(), { cache:'no-store' });
+      var j = await r.json();
+      var px  = (j && j.px  != null) ? j.px  : null;
+      var chg = (j && j.chg != null) ? j.chg : 0;
 
-  // Refresh UI
-  function refresh(){
-    var sym = state.active, d = state.data[sym];
-    $('sym').textContent = sym;
-    $('price').textContent = '$ ' + d.px.toFixed(2);
-    var chg = $('chg'); chg.textContent = fmt(d.chg);
-    chg.className = 'chg ' + (d.chg>=0?'up':'down');
-    drawChart(sym);
-    drawPositions();
+      if(!state.data[sym]) state.data[sym] = { px:null, chg:0, series:[] };
+      if(px != null){
+        var slot = state.data[sym];
+        slot.px  = px; slot.chg = chg;
+        var s = slot.series;
+        s.push(px);
+        if (s.length === 1) { for (var k=0;k<9;k++) s.unshift(px); } // seed 10 pts
+        if(s.length > HISTORY_LEN) s.shift();
+      }
+    }catch(e){ /* silencioso */ }
   }
 
-  // Posições
+  var ticking = false;
+  async function periodic(){
+    if(ticking) return; ticking = true;
+    await fetchQuote(state.active);
+    var others = Object.keys(state.data).filter(function(s){ return s !== state.active; });
+    for(var i=0;i<others.length;i++){
+      await fetchQuote(others[i]); await new Promise(function(res){ setTimeout(res, 120); });
+    }
+    refresh(false); checkAlerts(); ticking = false;
+  }
+
+  setInterval(periodic, REFRESH_MS);
+  (async function boot(){ await fetchQuote(state.active); refresh(true); periodic(); })();
+
+  function refresh(forceDraw){
+    var sym = state.active;
+    var d = state.data[sym] || { px:null, chg:0, series:[] };
+    $("sym").textContent = sym;
+    $("price").textContent = (d.px==null) ? (isBR(sym) ? "R$ —" : "$ —") : moneyOf(sym, d.px);
+    var chgEl = $("chg"); chgEl.textContent = fmtPct(d.chg||0);
+    chgEl.className = "pill " + ((d.chg||0)>=0 ? "up" : "down");
+    if(forceDraw) resizeCanvas(); drawChart(sym); drawPositions();
+  }
+
   function drawPositions(){
-    var tb = $('pos').getElementsByTagName('tbody')[0];
-    tb.innerHTML='';
+    var tb = $("pos").getElementsByTagName("tbody")[0];
+    tb.innerHTML = "";
     Object.keys(state.positions).forEach(function(sym){
       var pos = state.positions[sym];
-      var px = state.data[sym] ? state.data[sym].px : pos.avg;
-      var pl = (px - pos.avg)*pos.qty;
-      var tr = document.createElement('tr');
-      tr.innerHTML = '<td>'+sym+'</td><td>'+pos.qty+'</td><td>'+money(pos.avg)+'</td><td class="'+(pl>=0?'ok':'danger')+'">'+money(pl)+'</td>';
+      var px  = (state.data[sym] && state.data[sym].px!=null) ? state.data[sym].px : pos.avg;
+      var pl  = (px - pos.avg) * pos.qty;
+      var tr  = document.createElement("tr");
+      tr.innerHTML =
+        "<td>"+sym+"</td>"+
+        "<td>"+pos.qty+"</td>"+
+        "<td>"+moneyOf(sym, pos.avg)+"</td>"+
+        '<td class="'+(pl>=0?"ok":"danger")+'">'+moneyOf(sym, pl)+"</td>";
       tb.appendChild(tr);
     });
   }
+
   function pushNews(txt){
-    var box = document.createElement('div');
-    box.className='news-item';
-    box.innerHTML = '<div>'+txt+'</div><div class="muted small">'+(new Date()).toLocaleTimeString()+'</div>';
-    $('news').prepend(box);
+    var box = document.createElement("div");
+    box.className = "news-item";
+    box.innerHTML = "<div>"+txt+"</div>"+
+      '<div class="muted small">'+new Date().toLocaleTimeString()+"</div>";
+    $("news").prepend(box);
   }
+
   function trade(side, sym, qty, px){
-    var p = state.positions[sym] || {qty:0, avg:px};
-    if(side==='buy'){
+    var p = state.positions[sym] || { qty:0, avg:px };
+    if(side==="buy"){
       var newQty = p.qty + qty;
-      p.avg = (p.avg*p.qty + px*qty) / (newQty||1);
+      p.avg = (p.avg*p.qty + px*qty) / (newQty || 1);
       p.qty = newQty;
-    } else {
+    }else{
       p.qty = Math.max(0, p.qty - qty);
       if(p.qty===0) p.avg = px;
     }
-    state.positions[sym]=p;
-    pushNews('Ordem '+(side==='buy'?'comprada':'vendida')+': '+qty+' '+sym+' @ $'+px.toFixed(2)+' (paper)');
+    state.positions[sym] = p;
+    pushNews((side==="buy"?"🟢 Comprado":"🔴 Vendido")+": "+qty+" "+sym+" @ "+moneyOf(sym, px)+" (paper)");
     drawPositions();
   }
 
-  // Alertas
   function checkAlerts(){
     state.alerts.forEach(function(a){ a._hit = false; });
     state.alerts.forEach(function(a){
       var d = state.data[a.sym]; if(!d) return;
-      var px = d.px, chg = d.chg*100;
-      if(a.cond==='above' && px>=a.val) a._hit=true;
-      if(a.cond==='below' && px<=a.val) a._hit=true;
-      if(a.cond==='changeUp' && chg>=a.val) a._hit=true;
-      if(a.cond==='changeDown' && chg<=a.val) a._hit=true;
+      var px = d.px, chg = (d.chg||0)*100;
+      if(a.cond==="above" && px>=a.val) a._hit = true;
+      if(a.cond==="below" && px<=a.val) a._hit = true;
+      if(a.cond==="changeUp" && chg>=a.val) a._hit = true;
+      if(a.cond==="changeDown" && chg<=a.val) a._hit = true;
     });
     var keep = [];
-    state.alerts.forEach(function(a){
-      if(a._hit){
-        pushNews('🔔 Alerta: '+a.sym+' atingiu '+a.cond+' '+a.val);
-      } else keep.push(a);
-    });
+    state.alerts.forEach(function(a){ if(a._hit) pushNews("🔔 Alerta: "+a.sym+" atingiu "+a.cond+" "+a.val); else keep.push(a); });
     state.alerts = keep;
   }
 
-  // Botões
-  $('buyBtn').onclick = function(){
-    var sym = state.active, px = state.data[sym].px;
-    trade('buy', sym, 10, px);
-  };
-  $('sellBtn').onclick = function(){
-    var sym = state.active, px = state.data[sym].px;
-    trade('sell', sym, 10, px);
-  };
-  $('alertBtn').onclick = function(){
-    // cria alerta "preço acima de +2%"
-    var sym = state.active, px = state.data[sym].px;
-    openAlert(sym, 'above', (px*1.02).toFixed(2));
-  };
+  $("buyBtn").onclick  = function(){ var s=state.active, px=state.data[s]?.px; if(px!=null) trade("buy",  s, 10, px); };
+  $("sellBtn").onclick = function(){ var s=state.active, px=state.data[s]?.px; if(px!=null) trade("sell", s, 10, px); };
+  $("alertBtn").onclick = function(){ var s=state.active, px=state.data[s]?.px; if(px!=null) openAlert(s, "above", (px*1.02).toFixed(2)); };
 
-  // Modais simples
   function openOrder(side){
-    $('orderTitle').textContent = side==='buy'?'Comprar':'Vender';
-    $('mSym').value = state.active;
-    $('mSide').value = side;
-    $('mQty').value = 10;
-    $('mPx').value = state.data[state.active].px.toFixed(2);
-    document.getElementById('orderModal').classList.add('open');
+    $("orderTitle").textContent = side==="buy" ? "Comprar" : "Vender";
+    $("mSym").value = state.active; $("mSide").value = side; $("mQty").value = 10;
+    $("mPx").value  = (state.data[state.active]?.px ?? 0).toFixed(2);
+    $("orderModal").classList.add("open");
   }
-  function closeOrder(){ document.getElementById('orderModal').classList.remove('open'); }
+  function closeOrder(){ $("orderModal").classList.remove("open"); }
   function openAlert(sym, cond, val){
-    $('aSym').value = sym; $('aCond').value = cond; $('aVal').value = val;
-    document.getElementById('alertModal').classList.add('open');
+    $("aSym").value = sym; $("aCond").value = cond; $("aVal").value = val;
+    $("alertModal").classList.add("open");
   }
-  function closeAlert(){ document.getElementById('alertModal').classList.remove('open'); }
+  function closeAlert(){ $("alertModal").classList.remove("open"); }
 
-  document.getElementById('cancelOrder').onclick = closeOrder;
-  document.getElementById('closeOrder').onclick = closeOrder;
-  document.getElementById('confirmOrder').onclick = function(){
-    var sym = $('mSym').value.trim().toUpperCase();
-    var side = $('mSide').value;
-    var qty = Math.max(1, parseInt($('mQty').value||'1',10));
-    var px  = state.data[sym]? state.data[sym].px : parseFloat($('mPx').value);
-    trade(side, sym, qty, px);
+  $("cancelOrder").onclick = closeOrder;
+  $("closeOrder").onclick  = closeOrder;
+  $("confirmOrder").onclick = function(){
+    var sym  = $("mSym").value.trim().toUpperCase();
+    var side = $("mSide").value;
+    var qty  = Math.max(1, parseInt($("mQty").value || "1", 10));
+    var px   = state.data[sym]?.px ?? parseFloat($("mPx").value);
+    if(isFinite(px)) trade(side, sym, qty, px);
     closeOrder();
   };
 
-  document.getElementById('cancelAlert').onclick = closeAlert;
-  document.getElementById('closeAlert').onclick = closeAlert;
-  document.getElementById('confirmAlert').onclick = function(){
-    var sym = $('aSym').value.trim().toUpperCase();
-    var cond = $('aCond').value;
-    var val = parseFloat($('aVal').value);
-    state.alerts.push({sym:sym,cond:cond,val:val});
-    pushNews('✅ Alerta criado: '+sym+' '+cond+' '+val);
+  $("cancelAlert").onclick = closeAlert;
+  $("closeAlert").onclick  = closeAlert;
+  $("confirmAlert").onclick = function(){
+    var sym  = $("aSym").value.trim().toUpperCase();
+    var cond = $("aCond").value;
+    var val  = parseFloat($("aVal").value);
+    if(isFinite(val)){ state.alerts.push({ sym:sym, cond:cond, val:val }); pushNews("✅ Alerta criado: "+sym+" "+cond+" "+val); }
     closeAlert();
   };
 
-  // Ações nos botões principais abrem o modal de ordem real (se quiser)
-  document.getElementById('buyBtn').addEventListener('dblclick', function(){ openOrder('buy'); });
-  document.getElementById('sellBtn').addEventListener('dblclick', function(){ openOrder('sell'); });
+  $("buyBtn").addEventListener("dblclick", function(){ openOrder("buy"); });
+  $("sellBtn").addEventListener("dblclick", function(){ openOrder("sell"); });
 
-  // Inicializa
-  drawList('');
-  refresh();
+  drawList(""); refresh(true);
 })();
