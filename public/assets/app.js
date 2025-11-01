@@ -180,7 +180,7 @@
     drawAxesAndLabels(W, H, ts);
 
     // faixa útil (deixa 22px para labels na base)
-    var bottomPad = 18;
+    var bottomPad = 28;
     var Hplot = H - bottomPad;
 
     var min = Math.min.apply(null, slice);
