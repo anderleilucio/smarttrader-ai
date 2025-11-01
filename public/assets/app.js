@@ -115,24 +115,42 @@
   }
 
   // ---------- dados ----------
-  async function fetchQuote(sym){
-    try{
-      var r = await fetch('/api/quote?symbol='+encodeURIComponent(sym)+'&_='+Date.now(), { cache:'no-store' });
-      var j = await r.json();
-      var px  = (j && j.px  != null) ? j.px  : null;
-      var chg = (j && j.chg != null) ? j.chg : 0;
+ async function fetchQuote(sym){
+  try{
+    const r = await fetch('/api/quote?symbol='+encodeURIComponent(sym)+'&_=' + Date.now(), { cache:'no-store' });
+    const j = await r.json();
+    const px  = (j && j.px  != null) ? j.px  : null;
+    const chg = (j && j.chg != null) ? j.chg : 0;
 
-      if(!state.data[sym]) state.data[sym] = { px:null, chg:0, series:[] };
-      if(px != null){
-        var slot = state.data[sym];
-        slot.px  = px; slot.chg = chg;
-        var s = slot.series;
-        s.push(px);
-        if (s.length === 1) { for (var k=0;k<9;k++) s.unshift(px); } // seed 10 pts
-        if(s.length > HISTORY_LEN) s.shift();
+    if(!state.data[sym]) state.data[sym] = { px:null, chg:0, series:[] };
+    if(px != null){
+      const slot = state.data[sym];
+      slot.px  = px;
+      slot.chg = chg;
+
+      // --- série para o gráfico ---
+      const s = slot.series;
+      // valor “visual” para série: se não mudou, aplica micro-ruído
+      let v = px;
+      const last = s.length ? s[s.length - 1] : null;
+
+      if (last !== null && Math.abs(px - last) < 1e-8) {
+        // desvio de ±0,08% (somente visual no gráfico)
+        const noise = (Math.random() - 0.5) * 0.0016; // ±0.16% no total do range
+        v = px * (1 + noise);
       }
-    }catch(e){ /* silencioso */ }
+
+      s.push(v);
+
+      // primeira vez: sem “linha morta” (semente com 10 pontos)
+      if (s.length === 1) { for (let k = 0; k < 9; k++) s.unshift(v); }
+
+      if (s.length > HISTORY_LEN) s.shift();
+    }
+  } catch (e) {
+    // silencioso
   }
+}
 
   var ticking = false;
   async function periodic(){
