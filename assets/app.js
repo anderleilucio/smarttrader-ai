@@ -1,8 +1,8 @@
 (function () {
   // ===== CONFIGURAÇÃO DO FEED =====
-  const FINNHUB_KEY = "d42pb1hr01qorlesfdtgd42pb1hr01qorlesfdu0"; // Sua chave Finnhub
-  const USE_LIVE = true;                     // ativa dados reais
-  const LIVE_INTERVAL_MS = 5000;             // intervalo de atualização (5s)
+  const FINNHUB_KEY = "d42pb1hr01qorlesfdtgd42pb1hr01qorlesfdu0"; // sua key
+  const USE_LIVE = true;                     // liga dados reais
+  const LIVE_INTERVAL_MS = 5000;             // 5s
 
   // ===== Estado base =====
   var state = {
@@ -20,65 +20,78 @@
   };
 
   // ===== Utils =====
-  function $(id) { return document.getElementById(id); }
-  function fmt(v) { return (v >= 0 ? "+" : "") + (v * 100).toFixed(2) + "%"; }
-  function isBR(sym) { return /\d$/.test(sym); }
+  const $ = (id) => document.getElementById(id);
+  const fmt = (v) => (v >= 0 ? "+" : "") + (v * 100).toFixed(2) + "%";
+  const isBR = (sym) => /\d$/.test(sym); // tickers BR terminam com número (VALE3, PETR4, ITUB4)
 
   const usdFmt = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
   const brlFmt = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
-  function moneyFor(sym, v) {
-    return isBR(sym) ? brlFmt.format(v) : usdFmt.format(v);
-  }
+  const moneyFor = (sym, v) => (isBR(sym) ? brlFmt : usdFmt).format(v);
 
   document.title = "SmartTrader AI";
 
   // ===== Relógio UTC =====
-  function clockUTC() { return new Date().toISOString().slice(11, 19) + "Z"; }
-  function tickClock() { var el = $("clock"); if (el) el.textContent = "UTC — " + clockUTC(); }
+  const clockUTC = () => new Date().toISOString().slice(11, 19) + "Z";
+  const tickClock = () => { const el = $("clock"); if (el) el.textContent = "UTC — " + clockUTC(); };
   tickClock();
   setInterval(tickClock, 1000);
 
   // ===== Lista de tickers =====
-  var list = $("list");
+  const list = $("list");
   function drawList(q) {
     if (!list) return;
     list.innerHTML = "";
     Object.keys(state.data)
-      .filter(s => !q || s.toLowerCase().includes(q.toLowerCase()))
-      .forEach(sym => {
-        var d = state.data[sym];
-        var row = document.createElement("div");
+      .filter((s) => !q || s.toLowerCase().includes(q.toLowerCase()))
+      .forEach((sym) => {
+        const d = state.data[sym];
+        const row = document.createElement("div");
         row.className = "ticker";
         row.innerHTML =
           `<div><strong>${sym}</strong></div>` +
           `<div class="pct ${d.chg >= 0 ? "up" : "down"}">${fmt(d.chg)}</div>`;
-        row.onclick = function () { state.active = sym; drawList($("q").value); refresh(); };
+        row.onclick = function () {
+          state.active = sym;
+          startLive();           // troca de ativo reinicia atualizações
+          drawList($("q").value);
+          refresh();
+        };
         list.appendChild(row);
       });
   }
-  var qinput = $("q");
-  if (qinput) qinput.addEventListener("input", e => drawList(e.target.value));
+
+  const qinput = $("q");
+  if (qinput) {
+    qinput.addEventListener("input", (e) => drawList(e.target.value));
+    // ENTER carrega um novo símbolo
+    qinput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        loadSymbol(e.target.value);
+      }
+    });
+  }
 
   // ===== Série inicial simulada =====
-  var N = 120;
-  Object.values(state.data).forEach(d => {
+  const N = 120;
+  Object.values(state.data).forEach((d) => {
     if (d.series.length === 0) {
-      var x = d.px;
-      for (var i = 0; i < N; i++) {
-        x *= (1 + (Math.random() - 0.5) * 0.002);
+      let x = d.px;
+      for (let i = 0; i < N; i++) {
+        x *= 1 + (Math.random() - 0.5) * 0.002;
         d.series.push(x);
       }
     }
   });
 
   // ===== Canvas (gráfico) =====
-  var canvas = $("chart");
-  var ctx = canvas ? canvas.getContext("2d") : null;
+  const canvas = $("chart");
+  const ctx = canvas ? canvas.getContext("2d") : null;
+
   function resizeCanvas() {
     if (!canvas || !ctx) return;
-    var w = canvas.clientWidth || 600;
-    var h = canvas.clientHeight || 260;
-    var ratio = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth || 600;
+    const h = canvas.clientHeight || 260;
+    const ratio = window.devicePixelRatio || 1;
     canvas.width = w * ratio;
     canvas.height = h * ratio;
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
@@ -88,25 +101,24 @@
 
   function drawChart(sym) {
     if (!canvas || !ctx) return;
-    var d = state.data[sym];
-    var W = canvas.width;
-    var H = canvas.height;
+    const d = state.data[sym];
+    const W = canvas.width, H = canvas.height;
     ctx.clearRect(0, 0, W, H);
 
-    var min = Math.min(...d.series);
-    var max = Math.max(...d.series);
+    let min = Math.min(...d.series);
+    let max = Math.max(...d.series);
     if (!isFinite(min) || !isFinite(max) || min === max) {
       min = (d.px || 0) - 1;
       max = (d.px || 0) + 1;
     }
 
-    var xstep = W / Math.max(1, d.series.length - 1);
+    const xstep = W / Math.max(1, d.series.length - 1);
     ctx.beginPath();
     ctx.lineWidth = 2;
     ctx.strokeStyle = "#00ffa3";
     d.series.forEach((v, i) => {
-      var x = i * xstep;
-      var y = H - ((v - min) / (max - min + 1e-9)) * (H - 10) - 5;
+      const x = i * xstep;
+      const y = H - ((v - min) / (max - min + 1e-9)) * (H - 10) - 5;
       if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     });
     ctx.stroke();
@@ -124,6 +136,7 @@
   }
 
   async function fetchBRQuote(sym) {
+    // brapi público (sem key) — ótimo para testes
     const url = `https://brapi.dev/api/quote/${encodeURIComponent(sym)}?range=1d&interval=1m`;
     const r = await fetch(url);
     if (!r.ok) throw new Error("Erro brapi: " + r.status);
@@ -144,17 +157,53 @@
     }
   }
 
+  // ===== Busca dinâmica: carregar novo símbolo digitado =====
+  async function loadSymbol(raw) {
+    const sym = (raw || "").trim().toUpperCase();
+    if (!sym) return;
+
+    // busca cotação
+    const { px, chg } = await fetchQuote(sym);
+    if (!px || !isFinite(px)) {
+      pushNews(`⚠️ Símbolo não encontrado: ${sym}`);
+      return;
+    }
+
+    // cria/atualiza no estado
+    if (!state.data[sym]) state.data[sym] = { px, chg, series: [] };
+    else { state.data[sym].px = px; state.data[sym].chg = chg; }
+
+    // semente do gráfico (flat com ruído leve ao redor do preço atual)
+    if (state.data[sym].series.length === 0) {
+      const s = [];
+      let x = px;
+      for (let i = 0; i < N; i++) {
+        x *= 1 + (Math.random() - 0.5) * 0.0008;
+        s.push(x);
+      }
+      state.data[sym].series = s;
+    }
+
+    // define ativo atual e atualiza UI
+    state.active = sym;
+    startLive();                 // reinicia live para o novo ativo
+    drawList(qinput ? qinput.value : "");
+    refresh();
+  }
+
+  // ===== Atualização ao vivo =====
   async function updateLiveOnce() {
     const sym = state.active;
     const d = state.data[sym];
     if (!d) return;
     const { px, chg } = await fetchQuote(sym);
     if (!px) return;
-    const next = px;
-    d.series.push(next);
+
+    d.series.push(px);
     if (d.series.length > N) d.series.shift();
     d.px = px;
     d.chg = chg;
+
     refresh();
     checkAlerts();
   }
@@ -166,16 +215,16 @@
     window.__liveTimer = setInterval(updateLiveOnce, LIVE_INTERVAL_MS);
   }
 
-  // ===== Atualização ao vivo =====
+  // inicia
   startLive();
 
   // ===== UI Refresh =====
   function refresh() {
-    var sym = state.active;
-    var d = state.data[sym];
+    const sym = state.active;
+    const d = state.data[sym];
     $("sym").textContent = sym;
     $("price").textContent = moneyFor(sym, d.px);
-    var chg = $("chg");
+    const chg = $("chg");
     chg.textContent = fmt(d.chg);
     chg.className = "chg " + (d.chg >= 0 ? "up" : "down");
     drawChart(sym);
@@ -184,13 +233,13 @@
 
   // ===== Posições =====
   function drawPositions() {
-    var tb = $("pos").getElementsByTagName("tbody")[0];
+    const tb = $("pos").getElementsByTagName("tbody")[0];
     tb.innerHTML = "";
-    Object.keys(state.positions).forEach(function (sym) {
-      var pos = state.positions[sym];
-      var px = state.data[sym] ? state.data[sym].px : pos.avg;
-      var pl = (px - pos.avg) * pos.qty;
-      var tr = document.createElement("tr");
+    Object.keys(state.positions).forEach((sym) => {
+      const pos = state.positions[sym];
+      const px = state.data[sym] ? state.data[sym].px : pos.avg;
+      const pl = (px - pos.avg) * pos.qty;
+      const tr = document.createElement("tr");
       tr.innerHTML =
         `<td>${sym}</td><td>${pos.qty}</td>` +
         `<td>${moneyFor(sym, pos.avg)}</td>` +
@@ -200,17 +249,16 @@
   }
 
   function pushNews(txt) {
-    var box = document.createElement("div");
+    const box = document.createElement("div");
     box.className = "news-item";
-    box.innerHTML =
-      `<div>${txt}</div><div class="muted small">${new Date().toLocaleTimeString()}</div>`;
+    box.innerHTML = `<div>${txt}</div><div class="muted small">${new Date().toLocaleTimeString()}</div>`;
     $("news").prepend(box);
   }
 
   function trade(side, sym, qty, px) {
-    var p = state.positions[sym] || { qty: 0, avg: px };
+    const p = state.positions[sym] || { qty: 0, avg: px };
     if (side === "buy") {
-      var newQty = p.qty + qty;
+      const newQty = p.qty + qty;
       p.avg = (p.avg * p.qty + px * qty) / (newQty || 1);
       p.qty = newQty;
     } else {
@@ -224,30 +272,26 @@
 
   // ===== Alertas =====
   function checkAlerts() {
-    state.alerts.forEach(a => a._hit = false);
-    state.alerts.forEach(a => {
-      var d = state.data[a.sym]; if (!d) return;
-      var px = d.px, chg = d.chg * 100;
+    state.alerts.forEach((a) => (a._hit = false));
+    state.alerts.forEach((a) => {
+      const d = state.data[a.sym]; if (!d) return;
+      const px = d.px, chg = d.chg * 100;
       if (a.cond === "above" && px >= a.val) a._hit = true;
       if (a.cond === "below" && px <= a.val) a._hit = true;
       if (a.cond === "changeUp" && chg >= a.val) a._hit = true;
       if (a.cond === "changeDown" && chg <= a.val) a._hit = true;
     });
-    state.alerts = state.alerts.filter(a => {
-      if (a._hit) {
-        pushNews(`🔔 Alerta: ${a.sym} atingiu ${a.cond} ${a.val}`);
-        return false;
-      }
+    state.alerts = state.alerts.filter((a) => {
+      if (a._hit) { pushNews(`🔔 Alerta: ${a.sym} atingiu ${a.cond} ${a.val}`); return false; }
       return true;
     });
   }
 
-  // ===== Botões =====
-  $("buyBtn").onclick = () => trade("buy", state.active, 10, state.data[state.active].px);
+  // ===== Botões & Modais =====
+  $("buyBtn").onclick  = () => trade("buy",  state.active, 10, state.data[state.active].px);
   $("sellBtn").onclick = () => trade("sell", state.active, 10, state.data[state.active].px);
   $("alertBtn").onclick = () => openAlert(state.active, "above", (state.data[state.active].px * 1.02).toFixed(2));
 
-  // ===== Modais =====
   function openOrder(side) {
     $("orderTitle").textContent = side === "buy" ? "Comprar" : "Vender";
     $("mSym").value = state.active;
@@ -265,22 +309,22 @@
   function closeAlert() { $("alertModal").classList.remove("open"); }
 
   $("cancelOrder").onclick = closeOrder;
-  $("closeOrder").onclick = closeOrder;
+  $("closeOrder").onclick  = closeOrder;
   $("confirmOrder").onclick = function () {
-    var sym = $("mSym").value.trim().toUpperCase();
-    var side = $("mSide").value;
-    var qty = Math.max(1, parseInt($("mQty").value || "1", 10));
-    var px = state.data[sym] ? state.data[sym].px : parseFloat($("mPx").value);
+    const sym = $("mSym").value.trim().toUpperCase();
+    const side = $("mSide").value;
+    const qty = Math.max(1, parseInt($("mQty").value || "1", 10));
+    const px  = state.data[sym] ? state.data[sym].px : parseFloat($("mPx").value);
     trade(side, sym, qty, px);
     closeOrder();
   };
 
   $("cancelAlert").onclick = closeAlert;
-  $("closeAlert").onclick = closeAlert;
+  $("closeAlert").onclick  = closeAlert;
   $("confirmAlert").onclick = function () {
-    var sym = $("aSym").value.trim().toUpperCase();
-    var cond = $("aCond").value;
-    var val = parseFloat($("aVal").value);
+    const sym  = $("aSym").value.trim().toUpperCase();
+    const cond = $("aCond").value;
+    const val  = parseFloat($("aVal").value);
     if (isFinite(val)) {
       state.alerts.push({ sym, cond, val });
       pushNews(`✅ Alerta criado: ${sym} ${cond} ${val}`);
