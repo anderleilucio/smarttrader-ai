@@ -2,19 +2,19 @@
 (function () {
   "use strict";
 
-  /* ========== Config ==========\ */
-  var REFRESH_MS  = 6000;
+  /* ========== Config ========== */
+  var REFRESH_MS  = 2000;            // mais “ao vivo”
   var HISTORY_LEN = 120;
   var DEFAULTS    = ["TSLA","NVDA","AAPL","AMZN","MSFT","ITUB4","VALE3","PETR4"];
 
-  // pontos visíveis por timeframe (~6s entre pontos para demo)
+  // pontos visíveis por timeframe (aprox.)
   var TF_POINTS = {
     "1m": 10,  "1h": 60,  "5h": 90, "12h":110,
     "24h":120, "1w":120,  "1mo":120,"2mo":120,"3mo":120,"ytd":120
   };
   var DEFAULT_TF = "24h";
 
-  /* ========== Estado ==========\ */
+  /* ========== Estado ========== */
   var state = {
     active: "TSLA",
     data: {},          // data[SYM] = { px, chg, series:number[], times:number[] }
@@ -24,10 +24,10 @@
     offset: 0,
     pan: null,
     tf: DEFAULT_TF,
-    hover: null        // {x, idx} para tooltip/crosshair
+    hover: null        // {x, idx}
   };
 
-  /* ========== Helpers ==========\ */
+  /* ========== Helpers ========== */
   function $(id){ return document.getElementById(id); }
   function on(el, ev, fn, opts){ if(el) el.addEventListener(ev, fn, opts||false); }
   function onClick(id, fn){ var el=$(id); if(el) el.onclick = fn; }
@@ -49,16 +49,16 @@
 
   document.title = "SmartTrader AI";
 
-  /* ========== Relógio topo ==========\ */
+  /* ========== Relógio topo ========== */
   function tickClock(){ var c=$("clock"); if(c) c.textContent = "UTC — " + new Date().toISOString().slice(11,19) + "Z"; }
   tickClock(); setInterval(tickClock, 1000);
 
-  /* ========== Sementes ==========\ */
+  /* ========== Sementes ========== */
   DEFAULTS.forEach(function(s){
     state.data[s] = { px:null, chg:0, series:[], times:[] };
   });
 
-  /* ========== Lista ==========\ */
+  /* ========== Lista ========== */
   var list = $("list");
   function drawList(q){
     if(!list) return;
@@ -77,8 +77,8 @@
         row.onclick = function () {
           state.active = sym;
           state.offset = 0;
-          drawList($("q")?.value);
-          loadSeries(sym, state.tf, true);  // carrega série real ao trocar
+          drawList(($("q") && $("q").value) || "");
+          loadSeries(sym, state.tf, true);  // recarrega série ao trocar
         };
         list.appendChild(row);
       });
@@ -98,7 +98,7 @@
     });
   }
 
-  /* ========== Canvas / Gráfico ==========\ */
+  /* ========== Canvas / Gráfico ========== */
   var canvas = $("chart"), ctx = canvas ? canvas.getContext("2d") : null;
 
   function resizeCanvas() {
@@ -129,6 +129,7 @@
   }
 
   function drawAxesAndLabels(W, H, sliceTimes){
+    var bottomPad = 22;
     var divisions = 4;
     var step = Math.max(1, Math.floor((sliceTimes.length-1)/divisions));
     ctx.font = "12px Inter, ui-sans-serif";
@@ -140,7 +141,7 @@
       var x = (i / Math.max(1, sliceTimes.length-1)) * W;
       ctx.beginPath();
       ctx.moveTo(Math.floor(x)+0.5, 0);
-      ctx.lineTo(Math.floor(x)+0.5, H-22);
+      ctx.lineTo(Math.floor(x)+0.5, H-bottomPad);
       ctx.stroke();
 
       var t = new Date(sliceTimes[i]);
@@ -193,10 +194,8 @@
     if (state.hover){
       var idx = clamp(state.hover.idx, 0, slice.length-1);
       var hvx = idx * xstep;
-      var hvy = (function(){
-        var v = slice[idx];
-        return Hplot - ((v - min) / (max - min + 1e-9)) * (Hplot - 10) - 5;
-      })();
+      var vAt = slice[idx];
+      var hvy = Hplot - ((vAt - min) / (max - min + 1e-9)) * (Hplot - 10) - 5;
 
       // crosshair
       ctx.strokeStyle="#24304a"; ctx.lineWidth=1;
@@ -206,7 +205,7 @@
       ctx.fillStyle="#00ffa3"; ctx.beginPath(); ctx.arc(hvx, hvy, 3, 0, Math.PI*2); ctx.fill();
 
       // tooltip
-      var priceTxt = moneyOf(sym, slice[idx]);
+      var priceTxt = moneyOf(sym, vAt);
       var timeTxt  = fmtClock(new Date(ts[idx]));
       var txt = priceTxt + "  •  " + timeTxt;
 
@@ -220,7 +219,7 @@
     }
   }
 
-  /* ========== Dados ==========\ */
+  /* ========== Dados ========== */
   async function fetchQuote(sym){
     try{
       var r = await fetch('/api/quote?symbol='+encodeURIComponent(sym)+'&_=' + Date.now(), { cache:'no-store' });
@@ -251,15 +250,28 @@
     try{
       var r = await fetch('/api/series?symbol='+encodeURIComponent(sym)+'&tf='+encodeURIComponent(tf)+'&_=' + Date.now(), { cache:'no-store' });
       var j = await r.json(); // { t:[], c:[] }
-      if (Array.isArray(j?.t) && Array.isArray(j?.c) && j.t.length && j.c.length){
+      if (Array.isArray(j && j.t) && Array.isArray(j && j.c) && j.t.length && j.c.length){
         state.data[sym].series = j.c.slice(-HISTORY_LEN);
         state.data[sym].times  = j.t.slice(-HISTORY_LEN).map(function(x){ return (typeof x==="number" && x<1e12) ? x*1000 : x; });
-        // ajusta janela ao TF escolhido
-        state.viewN = Math.max(2, TF_POINTS[tf] || state.viewN);
-        state.offset = 0;
-        if (forceRedraw) refresh(true); else drawChart(sym);
+      } else {
+        // fallback: semeia com último px para não sumir
+        var px = (state.data[sym] && state.data[sym].px) || 100;
+        var now = Date.now();
+        state.data[sym].series = Array.from({length:20}, function(){ return px; });
+        state.data[sym].times  = Array.from({length:20}, function(_,i){ return now - (19-i)*REFRESH_MS; });
       }
-    } catch(e){ /* mantém o que já tem */ }
+      // ajusta janela ao TF escolhido
+      state.viewN = Math.max(2, TF_POINTS[tf] || state.viewN);
+      state.offset = 0;
+      if (forceRedraw) refresh(true); else drawChart(sym);
+    } catch(e){
+      // fallback duro
+      var px2 = (state.data[sym] && state.data[sym].px) || 100;
+      var now2 = Date.now();
+      state.data[sym].series = Array.from({length:20}, function(){ return px2; });
+      state.data[sym].times  = Array.from({length:20}, function(_,i){ return now2 - (19-i)*REFRESH_MS; });
+      refresh(true);
+    }
   }
 
   // loop periódico: atualiza ativo + demais
@@ -267,10 +279,8 @@
   async function periodic(){
     if(ticking) return; ticking = true;
 
-    // ativo primeiro (garante gráfico mais “vivo”)
     await fetchQuote(state.active);
 
-    // demais símbolos
     var others = Object.keys(state.data).filter(function(s){ return s !== state.active; });
     for(var i=0;i<others.length;i++){
       await fetchQuote(others[i]);
@@ -290,7 +300,7 @@
     await periodic();
   })();
 
-  /* ========== UI Principal ==========\ */
+  /* ========== UI Principal ========== */
   function refresh(forceDraw){
     var sym = state.active;
     var d = state.data[sym] || { px:null, chg:0, series:[] };
@@ -305,7 +315,7 @@
     highlightTF();
   }
 
-  /* ========== Posições / News ==========\ */
+  /* ========== Posições / News ========== */
   function drawPositions(){
     var table = $("pos"); if(!table) return;
     var tb = table.getElementsByTagName("tbody")[0]; if(!tb) return;
@@ -359,7 +369,7 @@
     state.alerts = keep;
   }
 
-  /* ========== Timeframes / Zoom / Pan ==========\ */
+  /* ========== Timeframes / Zoom / Pan ========== */
   function setTimeframe(tf){
     state.tf = tf;
     state.viewN = Math.max(2, TF_POINTS[tf] || HISTORY_LEN);
@@ -382,7 +392,7 @@
     if (delta > 0) v = Math.max(5, Math.floor(v * 0.8));
     else           v = Math.min(HISTORY_LEN, Math.ceil(v * 1.25));
     state.viewN = v;
-    state.offset = clamp(state.offset, 0, Math.max(0, (state.data[state.active]?.series.length||0) - state.viewN));
+    state.offset = clamp(state.offset, 0, Math.max(0, (state.data[state.active] && state.data[state.active].series.length || 0) - state.viewN));
     drawChart(state.active);
     highlightTF();
   }
@@ -402,7 +412,7 @@
     // scroll = zoom
     on(canvas, "wheel", function(e){ e.preventDefault(); zoom(e.deltaY < 0 ? 1 : -1); }, { passive:false });
 
-    // pan
+    // pan + hover
     on(canvas, "mousedown", function(e){
       var rect = canvas.getBoundingClientRect();
       state.pan = { x: e.clientX - rect.left, startOffset: state.offset };
@@ -410,42 +420,43 @@
     on(window, "mouseup", function(){ state.pan = null; });
     on(window, "mousemove", function(e){
       var rect = canvas.getBoundingClientRect();
-      // hover p/ tooltip
+
+      // hover (tooltip)
       var d = state.data[state.active]; if(d && d.series.length){
         var vp = getViewport(d.series);
         var view = vp.end - vp.start + 1;
         var x = (e.clientX - rect.left);
-        var idx = Math.round( (x / (canvas._cssW||1)) * (view - 1) );
+        var idx = clamp(Math.round( (x / (canvas._cssW||1)) * (view - 1) ), 0, view-1);
         state.hover = { x:x, idx: idx };
         drawChart(state.active);
       }
-      // pan (se pressionado)
+
+      // pan (pressionado)
       if(!state.pan) return;
-      var series = state.data[state.active]?.series || [];
+      var series = (state.data[state.active] && state.data[state.active].series) || [];
       var n = series.length; if (n < 2) return;
       var dx = (e.clientX - rect.left) - state.pan.x;
-      var vp = getViewport(series);
-      var perPx = vp.view / (canvas._cssW || 1);
+      var vp2 = getViewport(series);
+      var perPx = vp2.view / (canvas._cssW || 1);
       var shift = Math.round(dx * perPx);
-      var maxOffset = Math.max(0, n - vp.view);
+      var maxOffset = Math.max(0, n - vp2.view);
       state.offset = clamp(state.pan.startOffset + shift, 0, maxOffset);
       drawChart(state.active);
     });
-    // sair do canvas limpa tooltip
     on(canvas, "mouseleave", function(){ state.hover=null; drawChart(state.active); });
   }
 
-  /* ========== Modais / Ações ==========\ */
-  onClick("buyBtn",  function(){ var s=state.active, px=state.data[s]?.px; if(px!=null) trade("buy",  s, 10, px); });
-  onClick("sellBtn", function(){ var s=state.active, px=state.data[s]?.px; if(px!=null) trade("sell", s, 10, px); });
-  onClick("alertBtn", function(){ var s=state.active, px=state.data[s]?.px; if(px!=null) openAlert(s, "above", (px*1.02).toFixed(2)); });
+  /* ========== Modais / Ações ========== */
+  onClick("buyBtn",  function(){ var s=state.active, px=(state.data[s]&&state.data[s].px); if(px!=null) trade("buy",  s, 10, px); });
+  onClick("sellBtn", function(){ var s=state.active, px=(state.data[s]&&state.data[s].px); if(px!=null) trade("sell", s, 10, px); });
+  onClick("alertBtn", function(){ var s=state.active, px=(state.data[s]&&state.data[s].px); if(px!=null) openAlert(s, "above", (px*1.02).toFixed(2)); });
 
   function openOrder(side){
     var m=$("orderModal"); if(!m) return;
     var t=$("orderTitle"), ms=$("mSym"), md=$("mSide"), mq=$("mQty"), mp=$("mPx");
     if(t) t.textContent = side==="buy" ? "Comprar" : "Vender";
     if(ms) ms.value = state.active; if(md) md.value = side; if(mq) mq.value = 10;
-    if(mp) mp.value  = (state.data[state.active]?.px ?? 0).toFixed(2);
+    if(mp) mp.value  = ((state.data[state.active]&&state.data[state.active].px) || 0).toFixed(2);
     m.classList.add("open");
   }
   function closeOrder(){ var m=$("orderModal"); if(m) m.classList.remove("open"); }
@@ -460,10 +471,10 @@
   onClick("cancelOrder", closeOrder);
   onClick("closeOrder",  closeOrder);
   onClick("confirmOrder", function(){
-    var sym  = $("mSym")?.value.trim().toUpperCase() || state.active;
-    var side = $("mSide")?.value || "buy";
-    var qty  = Math.max(1, parseInt(($("mQty")?.value || "1"), 10));
-    var px   = state.data[sym]?.px ?? parseFloat($("mPx")?.value || "0");
+    var sym  = ($("mSym") && $("mSym").value || "").trim().toUpperCase() || state.active;
+    var side = ($("mSide") && $("mSide").value) || "buy";
+    var qty  = Math.max(1, parseInt(($("mQty") && $("mQty").value) || "1", 10));
+    var px   = (state.data[sym] && state.data[sym].px) || parseFloat(($("mPx") && $("mPx").value) || "0");
     if(isFinite(px)) trade(side, sym, qty, px);
     closeOrder();
   });
@@ -471,9 +482,9 @@
   onClick("cancelAlert", closeAlert);
   onClick("closeAlert",  closeAlert);
   onClick("confirmAlert", function(){
-    var sym  = ($("aSym")?.value || "").trim().toUpperCase();
-    var cond = $("aCond")?.value || "above";
-    var val  = parseFloat($("aVal")?.value || "0");
+    var sym  = (($("aSym") && $("aSym").value) || "").trim().toUpperCase();
+    var cond = ($("aCond") && $("aCond").value) || "above";
+    var val  = parseFloat((($("aVal") && $("aVal").value) || "0"));
     if(sym && isFinite(val)){ state.alerts.push({ sym:sym, cond:cond, val:val }); pushNews("✅ Alerta criado: "+sym+" "+cond+" "+val); }
     closeAlert();
   });
