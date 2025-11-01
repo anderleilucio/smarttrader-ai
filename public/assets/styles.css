@@ -16,7 +16,7 @@ body{
 .topbar{
   position:sticky; top:0; z-index:10; display:flex; align-items:center; justify-content:space-between;
   padding:12px 16px; border-bottom:1px solid var(--line);
-  background:linear-gradient(180deg,#0f1016,#0b0b0f)
+  background:linear-gradient(180deg,#0f1016,#0b0b0f);
 }
 .brand{ display:flex; align-items:center; gap:10px; font-weight:800; letter-spacing:.2px }
 .clock{ color:var(--muted); font-size:13px }
@@ -27,20 +27,21 @@ body{
 .left{ padding:12px }
 .center{
   padding:14px; display:grid;
-  grid-template-rows:auto auto auto 1fr auto; /* título • linha de ações • timeframes • gráfico • legenda */
-  gap:12px; min-height:420px
+  /* título • linha de ações • timeframes/zoom • gráfico • legenda */
+  grid-template-rows:auto auto auto 1fr auto;
+  gap:12px; min-height:420px;
 }
 .right{ padding:12px; display:grid; grid-template-rows:auto 1fr; gap:12px }
 
 /* ===== Busca & lista ===== */
 .search{
   width:100%; padding:10px 12px; border-radius:8px;
-  border:1px solid var(--line); background:#0e0f14; color:var(--text)
+  border:1px solid var(--line); background:#0e0f14; color:var(--text);
 }
 .list{ margin-top:10px; max-height:calc(100vh - 220px); overflow:auto }
 .ticker{
   display:flex; align-items:center; justify-content:space-between; padding:10px;
-  border-radius:8px; margin-bottom:8px; cursor:pointer; border:1px solid transparent; transition:.15s
+  border-radius:8px; margin-bottom:8px; cursor:pointer; border:1px solid transparent; transition:.15s;
 }
 .ticker:hover{ background:#0e0f14; border-color:#1d2130 }
 .ticker.active{ background:#101522; border-color:#24304a }
@@ -53,47 +54,66 @@ h1{ font-size:22px; margin:0 }
 .price{ font-size:36px; font-weight:800 }
 
 /* ===== Chips, botões ===== */
-.pill{ border:1px solid var(--line); color:#b9c4da; background:#0f1420; padding:6px 10px; border-radius:999px }
+.pill{
+  border:1px solid var(--line); color:#b9c4da; background:#0f1420; padding:6px 10px; border-radius:999px;
+}
 .pill.up{ color:var(--ok) } .pill.down{ color:var(--danger) }
 
 .btn{
   background:var(--accent); color:#001510; border:none; padding:12px 18px;
   border-radius:10px; font-weight:800; cursor:pointer; letter-spacing:.2px;
-  box-shadow:0 8px 24px rgba(0,255,163,.15)
+  box-shadow:0 8px 24px rgba(0,255,163,.15);
 }
+.btn:hover{ transform:translateY(-1px) }
 .btn:focus-visible{ outline:2px solid #1aeb9a; outline-offset:2px }
 .btn.sell{ background:#182028; color:#ffb3c7; border:1px solid #3a2538 }
 .btn.alert{ background:#182028; color:#9bd3ff; border:1px solid #273b55 }
 
 /* ===== Barra de Timeframes / Zoom ===== */
-.tfbar{
-  display:flex; align-items:center; gap:10px; flex-wrap:wrap
-}
-.tfbar .group{
+/* aceita tanto #tfbar quanto .tfbar */
+#tfbar, .tfbar{ display:flex; align-items:center; gap:10px; flex-wrap:wrap }
+#tfbar .group, .tfbar .group{
   display:flex; align-items:center; gap:8px; background:#0e1118; border:1px solid var(--line);
-  padding:6px; border-radius:10px
+  padding:6px; border-radius:10px;
 }
-.tf{
+
+/* Botões de timeframe “modernos” (classe .tf) */
+#tfbar .tf, .tfbar .tf{
   appearance:none; background:#0f1420; color:#c7d1e6; border:1px solid #22304a;
   padding:6px 10px; border-radius:8px; cursor:pointer; font-weight:600; font-size:13px;
-  transition:background .15s,border-color .15s,transform .06s
+  transition:background .15s,border-color .15s,transform .06s,color .15s, box-shadow .15s;
 }
-.tf:hover{ background:#111a2a; border-color:#2b3a57 }
-.tf:active{ transform:translateY(1px) }
-.tf.active{ background:#122036; border-color:#2f4b77; color:#d9e6ff }
+#tfbar .tf:hover, .tfbar .tf:hover{ background:#111a2a; border-color:#2b3a57 }
+#tfbar .tf:active, .tfbar .tf:active{ transform:translateY(1px) }
+#tfbar .tf.active, .tfbar .tf.active{
+  background:#122036; border-color:#2f4b77; color:#d9e6ff; box-shadow:0 0 0 2px rgba(66,170,255,.15);
+}
 
-.zoom{
-  display:flex; align-items:center; gap:6px
+/* Compatibilidade: se o HTML usar .timeframes com .pill[data-tf] */
+.timeframes .pill[data-tf]{
+  background:#0f1420; border-color:#22304a; color:#c7d1e6; cursor:pointer;
+  transition:background .15s,border-color .15s,color .15s, box-shadow .15s;
 }
+.timeframes .pill[data-tf]:hover{ background:#111a2a; border-color:#2b3a57 }
+.timeframes .pill[data-tf].active{
+  background:#122036; border-color:#2f4b77; color:#d9e6ff; box-shadow:0 0 0 2px rgba(66,170,255,.15);
+}
+
+/* Zoom */
+.zoom{ display:flex; align-items:center; gap:6px }
 .zoom .tf{ width:36px; text-align:center; padding:6px 0 }
-.zoom .reset{
-  color:#9fb7ff; border-color:#29406b
+.zoom .reset, #resetZoom{
+  background:#151a26; color:#9fb7ff; border:1px solid #29406b; border-radius:8px; padding:6px 10px; cursor:pointer;
 }
+#zoomIn,#zoomOut{
+  background:#151a26; color:#c9d6ee; border:1px solid #263044; border-radius:8px; padding:6px 10px; cursor:pointer;
+}
+#zoomIn:hover,#zoomOut:hover,#resetZoom:hover{ background:#1a2233; border-color:#33507a }
 
 /* ===== Gráfico ===== */
 #chart{
   width:100%; height:260px; display:block; background:#0d0f16;
-  border:1px solid var(--line); border-radius:12px; cursor:crosshair
+  border:1px solid var(--line); border-radius:12px; cursor:crosshair;
 }
 .caption{ color:var(--muted); font-size:12px }
 
@@ -127,5 +147,5 @@ h1{ font-size:22px; margin:0 }
 @media (max-width:1024px){
   .layout{ grid-template-columns:1fr; grid-template-rows:auto auto auto }
   #chart{ height:220px }
-  .tfbar .group{ width:100%; justify-content:flex-start; flex-wrap:wrap }
+  #tfbar .group, .tfbar .group{ width:100%; justify-content:flex-start; flex-wrap:wrap }
 }
