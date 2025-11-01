@@ -6,8 +6,8 @@
   var REFRESH_MS  = 6000;
   var HISTORY_LEN = 120;
   var DEFAULTS    = ["TSLA","NVDA","AAPL","AMZN","MSFT","ITUB4","VALE3","PETR4"];
-  var TF_POINTS = { "1m":10, "1h":60, "5h":90, "12h":110, "24h":120, "1w":120, "1mo":120, "2mo":120, "3mo":120, "ytd":120 };
-  var DEFAULT_TF = "24h";
+  var TF_POINTS   = { "1m":10, "1h":60, "5h":90, "12h":110, "24h":120, "1w":120, "1mo":120, "2mo":120, "3mo":120, "ytd":120 };
+  var DEFAULT_TF  = "24h";
 
   /* ===== Estado ===== */
   var state = {
@@ -29,14 +29,14 @@
   }
   function fmtClock(d){ return String(d.getUTCHours()).padStart(2,"0")+":"+String(d.getUTCMinutes()).padStart(2,"0")+"Z"; }
 
-  /* ===== Relógio topo ===== */
+  /* ===== Relógio ===== */
   function tickClock(){ var c=$("clock"); if(c) c.textContent="UTC — "+new Date().toISOString().slice(11,19)+"Z"; }
   tickClock(); setInterval(tickClock,1000);
 
   /* ===== Sementes ===== */
   DEFAULTS.forEach(function(s){ state.data[s]={px:null, chg:0, series:[], times:[]}; });
 
-  /* ===== Lista (AGORA COM PREÇO) ===== */
+  /* ===== Lista (com preço) ===== */
   var list=$("list");
   function drawList(q){
     if(!list) return; list.innerHTML="";
@@ -47,7 +47,6 @@
         var row=document.createElement("div");
         row.className="ticker"+(sym===state.active?" active":"");
         var flag=isBR(sym)?' <span title="Brasil">🇧🇷</span>':'';
-        // NEW: inclui preço vivo
         var pxTxt = d.px==null ? (isBR(sym)?"R$ —":"$ —") : moneyOf(sym,d.px);
         row.innerHTML =
           '<div class="lhs"><span class="sym">'+sym+'</span>'+flag+'</div>'+
@@ -71,7 +70,7 @@
     });
   }
 
-  /* ===== Canvas / Gráfico (idêntico ao seu com tooltip) ===== */
+  /* ===== Canvas / Gráfico ===== */
   var canvas=$("chart"), ctx=canvas?canvas.getContext("2d"):null;
   function resizeCanvas(){ if(!canvas||!ctx) return; var r=canvas.getBoundingClientRect();
     var cssW=Math.max(1,Math.floor(r.width||canvas.clientWidth||600));
@@ -109,7 +108,7 @@
     for(var i=0;i<slice.length;i++){ var v=slice[i], x=i*xstep, y=Hplot-((v-min)/(max-min+1e-9))*(Hplot-10)-5; if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); }
     ctx.stroke();
 
-    if(state.hover){ // tooltip
+    if(state.hover){
       var idx=clamp(state.hover.idx,0,slice.length-1), hvx=idx*xstep;
       var v=slice[idx], y=Hplot-((v-min)/(max-min+1e-9))*(Hplot-10)-5;
       ctx.strokeStyle="#24304a"; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(Math.floor(hvx)+0.5,0); ctx.lineTo(Math.floor(hvx)+0.5,Hplot); ctx.stroke();
@@ -122,20 +121,18 @@
   }
 
   /* ===== Dados ===== */
-
-  // >>> CHAVE: ao carregar série, ANCORAR no último quote <<<
   async function loadSeries(sym, tf, forceRedraw){
     try{
-      const r = await fetch('/api/series?symbol='+encodeURIComponent(sym)+'&tf='+encodeURIComponent(tf)+'&_='+Date.now(), { cache:'no-store' });
-      const j = await r.json(); // { t:[], c:[] }
+      const r  = await fetch('/api/series?symbol='+encodeURIComponent(sym)+'&tf='+encodeURIComponent(tf)+'&_='+Date.now(), { cache:'no-store' });
+      const j  = await r.json(); // { t:[], c:[] }
       if(Array.isArray(j?.t) && Array.isArray(j?.c) && j.t.length && j.c.length){
         const ds = state.data[sym] || (state.data[sym]={px:null,chg:0,series:[],times:[]});
         ds.series = j.c.slice(-HISTORY_LEN);
         ds.times  = j.t.slice(-HISTORY_LEN).map(x => (typeof x==="number" && x<1e12) ? x*1000 : x);
 
-        // ANCORAR no último preço atual:
+        // ancora no último quote
         const qr = await fetch('/api/quote?symbol='+encodeURIComponent(sym)+'&_='+Date.now(), { cache:'no-store' });
-        const qj = await qr.json(); // { px, chg, ts? }
+        const qj = await qr.json();
         if (qj && qj.px != null){
           ds.px  = Number(qj.px);
           ds.chg = Number(qj.chg||0);
@@ -143,7 +140,6 @@
           if (ds.times.length && now - ds.times[ds.times.length-1] > 2000){
             ds.series.push(ds.px); ds.times.push(now);
           } else {
-            // substitui último ponto para bater com o preço atual
             ds.series[ds.series.length-1] = ds.px;
             ds.times [ds.times.length -1] = now;
           }
@@ -153,18 +149,17 @@
         state.offset = 0;
         if(forceRedraw) refresh(true); else drawChart(sym);
       }
-    } catch(e){ /* mantém o que tinha */ }
+    } catch(e){ /* keep last */ }
   }
 
   async function fetchQuote(sym){
     try{
-      const r = await fetch('/api/quote?symbol='+encodeURIComponent(sym)+'&_='+Date.now(), { cache:'no-store' });
-      const j = await r.json();
+      const r  = await fetch('/api/quote?symbol='+encodeURIComponent(sym)+'&_='+Date.now(), { cache:'no-store' });
+      const j  = await r.json();
       const ds = state.data[sym] || (state.data[sym]={px:null,chg:0,series:[],times:[]});
       if(j && j.px != null){
         ds.px  = Number(j.px);
         ds.chg = Number(j.chg||0);
-        // se estamos no fim, apenda o novo preço à série para o gráfico andar
         if (ds.series.length){
           const now = Date.now();
           ds.series.push(ds.px); ds.times.push(now);
@@ -175,41 +170,32 @@
     } catch(e){ /* silencioso */ }
   }
 
-  // ciclo periódico: atualiza ativo e a lista (todos os símbolos)
   var ticking=false;
   async function periodic(){
     if(ticking) return; ticking=true;
-
     await fetchQuote(state.active);
     const others = Object.keys(state.data).filter(s=>s!==state.active);
     for(let i=0;i<others.length;i++){ await fetchQuote(others[i]); }
-
-    // atualiza UI sem precisar clicar
     drawList($("q")?.value);
     refresh(false);
     checkAlerts();
-
     ticking=false;
   }
 
   setInterval(periodic, REFRESH_MS);
-  (async function boot(){
-    drawList("");
-    await loadSeries(state.active, state.tf, true);
-    await periodic();
-  })();
+  (async function boot(){ drawList(""); await loadSeries(state.active, state.tf, true); await periodic(); })();
 
-  /* ===== UI Principal ===== */
+  /* ===== UI ===== */
   function refresh(forceDraw){
     var sym=state.active, d=state.data[sym]||{px:null,chg:0,series:[]};
     var symEl=$("sym"), priceEl=$("price"), chgEl=$("chg");
     if(symEl) symEl.textContent=sym;
     if(priceEl) priceEl.textContent = (d.px==null) ? (isBR(sym)?"R$ —":"$ —") : moneyOf(sym,d.px);
     if(chgEl){ chgEl.textContent=fmtPct(d.chg||0); chgEl.className="pill "+((d.chg||0)>=0?"up":"down"); }
-    if(forceDraw) resizeCanvas(); drawChart(sym); drawPositions(); highlightTF();
+    if(forceDraw) resizeCanvas();
+    drawChart(sym); drawPositions(); highlightTF();
   }
 
-  /* ===== Posições / News / Alertas (inalterado) ===== */
   function drawPositions(){ var table=$("pos"); if(!table) return;
     var tb=table.getElementsByTagName("tbody")[0]; if(!tb) return; tb.innerHTML="";
     Object.keys(state.positions).forEach(function(sym){
@@ -244,14 +230,45 @@
   }
 
   /* ===== Timeframes / Zoom / Pan ===== */
-  function setTimeframe(tf){ state.tf=tf; state.viewN=Math.max(2,TF_POINTS[tf]||HISTORY_LEN); state.offset=0; highlightTF(); loadSeries(state.active,tf,true); }
-  function highlightTF(){ var bar=$("tfbar"); if(!bar) return; bar.querySelectorAll(".tf").forEach(function(b){ var tf=b.getAttribute("data-tf"); b.classList.toggle("active", tf===state.tf && state.offset===0); }); }
-  function zoom(delta){ var v=state.viewN; v=delta>0?Math.max(5,Math.floor(v*0.8)):Math.min(HISTORY_LEN,Math.ceil(v*1.25));
-    state.viewN=v; state.offset=clamp(state.offset,0,Math.max(0,(state.data[state.active]?.series.length||0)-state.viewN)); drawChart(state.active); highlightTF();
+
+  // (1) Marca botão ativo em TODAS as barras
+  function highlightTF(){
+    document.querySelectorAll('.tf[data-tf]').forEach(function(b){
+      var tf=b.getAttribute('data-tf');
+      b.classList.toggle('active', tf===state.tf && state.offset===0);
+    });
+  }
+
+  function setTimeframe(tf){
+    state.tf=tf;
+    state.viewN=Math.max(2,TF_POINTS[tf]||HISTORY_LEN);
+    state.offset=0;
+    highlightTF();
+    loadSeries(state.active,tf,true);
+  }
+
+  // (2) Ligar TODOS os botões de timeframe existentes (topo e rodapé)
+  (function wireTFButtons(){
+    document.querySelectorAll('.tf[data-tf]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var tf = btn.getAttribute('data-tf');
+        if(tf) setTimeframe(tf);
+      });
+    });
+  })();
+
+  function zoom(delta){
+    var v=state.viewN;
+    v = delta>0 ? Math.max(5,Math.floor(v*0.8)) : Math.min(HISTORY_LEN,Math.ceil(v*1.25));
+    state.viewN=v;
+    state.offset=clamp(state.offset,0,Math.max(0,(state.data[state.active]?.series.length||0)-state.viewN));
+    drawChart(state.active); highlightTF();
   }
   function resetZoom(){ state.viewN=TF_POINTS[state.tf]||60; state.offset=0; drawChart(state.active); highlightTF(); }
-  var tfbar=$("tfbar"); if(tfbar){ tfbar.querySelectorAll(".tf[data-tf]").forEach(function(btn){ on(btn,"click", function(){ var tf=btn.getAttribute("data-tf"); if(tf) setTimeframe(tf); }); }); }
-  onClick("zoomIn", function(){ zoom(1); }); onClick("zoomOut", function(){ zoom(-1); }); onClick("resetZoom", resetZoom);
+
+  onClick("zoomIn", function(){ zoom(1);  });
+  onClick("zoomOut",function(){ zoom(-1); });
+  onClick("resetZoom", resetZoom);
 
   if(canvas){
     on(canvas,"wheel", function(e){ e.preventDefault(); zoom(e.deltaY<0?1:-1); }, {passive:false});
@@ -269,13 +286,14 @@
     on(canvas,"mouseleave", function(){ state.hover=null; drawChart(state.active); });
   }
 
-  /* ===== Modais ===== */
-  onClick("buyBtn", function(){ var s=state.active, px=state.data[s]?.px; if(px!=null) trade("buy", s, 10, px); });
-  onClick("sellBtn",function(){ var s=state.active, px=state.data[s]?.px; if(px!=null) trade("sell",s,10,px); });
+  /* ===== Modais (alert) ===== */
   onClick("alertBtn",function(){ var s=state.active, px=state.data[s]?.px; if(px!=null) openAlert(s,"above",(px*1.02).toFixed(2)); });
   function openAlert(sym,cond,val){ var m=$("alertModal"); if(!m) return; var as=$("aSym"),ac=$("aCond"),av=$("aVal"); if(as) as.value=sym; if(ac) ac.value=cond; if(av) av.value=val; m.classList.add("open"); }
   function closeAlert(){ var m=$("alertModal"); if(m) m.classList.remove("open"); }
   onClick("cancelAlert", closeAlert); onClick("closeAlert", closeAlert);
 
-  // (Order modal funções permanecem como você já tem)
+  // buy/sell mantidos
+  onClick("buyBtn",  function(){ var s=state.active, px=state.data[s]?.px; if(px!=null) trade("buy", s, 10, px); });
+  onClick("sellBtn", function(){ var s=state.active, px=state.data[s]?.px; if(px!=null) trade("sell",s,10,px); });
+
 })();
