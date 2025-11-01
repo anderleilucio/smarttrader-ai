@@ -28,31 +28,29 @@
     <section class="center" aria-label="Detalhes do ativo">
       <div class="row">
         <div style="flex:1">
-          <div class="title-row">
-            <h1 id="sym">TSLA</h1>
+         <div class="title-row">
+  <h1 id="sym">TSLA</h1>
 
-            <!-- Barra de timeframes e zoom (usada pelo app.js) -->
-            <div id="tfbar" class="tfbar" role="group" aria-label="Timeframes e zoom">
-              <div class="group" aria-label="Timeframes">
-                <button class="tf" data-tf="1m"  type="button">1m</button>
-                <button class="tf" data-tf="1h"  type="button">1h</button>
-                <button class="tf" data-tf="5h"  type="button">5h</button>
-                <button class="tf" data-tf="12h" type="button">12h</button>
-                <button class="tf" data-tf="24h" type="button">24h</button>
-                <button class="tf" data-tf="1w"  type="button">1w</button>
-                <button class="tf" data-tf="1mo" type="button">1mo</button>
-                <button class="tf" data-tf="2mo" type="button">2mo</button>
-                <button class="tf" data-tf="3mo" type="button">3mo</button>
-                <button class="tf" data-tf="ytd" type="button">YTD</button>
-              </div>
+  <!-- Barra de timeframes e zoom -->
+  <div id="tfbar" class="tfbar">
+    <span class="pill">TF</span>
+    <button class="tf" data-tf="1m">1m</button>
+    <button class="tf" data-tf="1h">1h</button>
+    <button class="tf" data-tf="5h">5h</button>
+    <button class="tf" data-tf="12h">12h</button>
+    <button class="tf" data-tf="24h">24h</button>
+    <button class="tf" data-tf="1w">1w</button>
+    <button class="tf" data-tf="1mo">1m</button>
+    <button class="tf" data-tf="2mo">2m</button>
+    <button class="tf" data-tf="3mo">3m</button>
+    <button class="tf" data-tf="ytd">YTD</button>
 
-              <div class="group zoom" aria-label="Controles de zoom">
-                <button id="zoomOut"  class="tf" type="button" title="Diminuir zoom">−</button>
-                <button id="resetZoom" class="tf reset" type="button" title="Resetar zoom">Reset</button>
-                <button id="zoomIn"   class="tf" type="button" title="Aumentar zoom">+</button>
-              </div>
-            </div>
-          </div>
+    <span class="pill">Zoom</span>
+    <button id="zoomOut"  class="tf">−</button>
+    <button id="resetZoom" class="tf">Reset</button>
+    <button id="zoomIn"   class="tf">+</button>
+  </div>
+</div>
 
           <div class="row" aria-live="polite">
             <div class="price" id="price">$ —</div>
