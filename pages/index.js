@@ -6,68 +6,99 @@ export default function Home() {
   return (
     <>
       <Head>
-        <title>SmartTrader AI</title>
+        <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>SmartTrader AI — Radar de Mercado Inteligente</title>
+        <meta
+          name="description"
+          content="SmartTrader AI — painel de monitoramento de ações com IA e alertas em tempo quase real (protótipo)."
+        />
+        <link rel="icon" href="/assets/logo.svg" />
+        <link rel="stylesheet" href="/assets/styles.css" />
       </Head>
 
-      {/* Topo */}
-      <div className="topbar">
-        <div className="brand">SmartTrader AI</div>
-        {/* suppressHydrationWarning evita mismatch no relógio inicial */}
-        <div className="clock"><span id="clock" suppressHydrationWarning>UTC — --:--:--Z</span></div>
-      </div>
-
-      {/* Layout principal */}
-      <div className="layout">
-        <div className="left">
-          <input id="q" className="search" placeholder="Buscar (ex.: TSLA, AAPL, VALE3)" />
-          <div id="list" className="list"></div>
+      <header className="topbar">
+        <div className="brand">
+          <img src="/assets/logo.svg" alt="SmartTrader AI" width="22" height="22" />
+          <span>SmartTrader AI</span>
         </div>
+        <div className="clock" id="clock" aria-live="polite">UTC — --:--:--</div>
+      </header>
 
-      <div className="center">
-  <div className="title-row">
-    <h1 id="sym">TSLA</h1>
-    <div id="chg" className="pill">+0.00%</div>
-  </div>
+      <main className="layout">
+        <aside className="left" aria-label="Ativos">
+          <input id="q" className="search" placeholder="Buscar (ex.: TSLA, AAPL, VALE3)" />
+          <div id="list" className="list" />
+        </aside>
 
-  <div className="row">
-    <div className="price" id="price">$ —</div>
-    <button id="buyBtn"  className="btn">Comprar</button>
-    <button id="sellBtn" className="btn sell">Vender</button>
-    <button id="alertBtn" className="btn alert">Criar alerta</button>
-  </div>
+        <section className="center" aria-label="Detalhes do ativo">
+          <div className="row">
+            <div style={{flex:1}}>
+              <div className="title-row">
+                <h1 id="sym">TSLA</h1>
+              </div>
 
-  {/* 🔽 NOVO: container que o JS vai preencher com timeframes e zoom */}
-  <div id="controls" className="row" aria-label="Timeframes e zoom"></div>
+              <div className="row" aria-live="polite">
+                <div className="price" id="price">$ —</div>
+                <div id="chg" className="pill">—</div>
+              </div>
+            </div>
 
-  <canvas id="chart"></canvas>
-  <div className="caption">Atualização automática a cada 6 s</div>
-</div>
-        <div className="right">
-          <div className="panel">
-            <h3>Alertas & Notícias</h3>
-            <div id="news"></div>
+            <div className="row buttons">
+              <button className="btn" id="buyBtn"  type="button">Comprar</button>
+              <button className="btn sell" id="sellBtn" type="button">Vender</button>
+              <button className="btn alert" id="alertBtn" type="button">Criar alerta</button>
+            </div>
           </div>
 
-          <div className="panel">
-            <h3>Posições (Paper)</h3>
-            <table id="pos" className="pos-table">
+          <canvas id="chart" height="260" aria-label="Gráfico de preço" role="img"></canvas>
+
+          {/* Rodapé do gráfico: seleção de períodos */}
+          <div className="chart-footer">
+            <div id="tfbar" className="tfbar">
+              <button className="tf" data-tf="1m">1m</button>
+              <button className="tf" data-tf="1h">1h</button>
+              <button className="tf" data-tf="5h">5h</button>
+              <button className="tf" data-tf="12h">12h</button>
+              <button className="tf" data-tf="24h">1D</button>
+              <button className="tf" data-tf="1w">1S</button>
+              <button className="tf" data-tf="1mo">1M</button>
+              <button className="tf" data-tf="2mo">2M</button>
+              <button className="tf" data-tf="3mo">3M</button>
+              <button className="tf" data-tf="ytd">YTD</button>
+            </div>
+          </div>
+
+          <p className="caption">Atualização automática a cada 6 s.</p>
+        </section>
+
+        <aside className="right" aria-label="Alertas e posições">
+          <section className="panel" aria-labelledby="news-title">
+            <h3 id="news-title">Alertas & Notícias</h3>
+            <div id="news" className="news">
+              <div className="news-item">
+                <div><strong>Bem-vindo</strong> ao SmartTrader AI (protótipo).</div>
+                <div className="muted small">Crie um alerta para ver como aparece aqui.</div>
+              </div>
+            </div>
+          </section>
+
+          <section className="panel" aria-labelledby="pos-title">
+            <h3 id="pos-title">Posições (paper)</h3>
+            <table className="pos-table" id="pos">
               <thead>
                 <tr><th>Símbolo</th><th>Qtde</th><th>PM</th><th>P/L</th></tr>
               </thead>
               <tbody></tbody>
             </table>
-          </div>
-        </div>
-      </div>
+          </section>
+        </aside>
+      </main>
 
       <footer className="footer">© 2025 SmartTrader AI — página estática de demonstração</footer>
 
-      {/* CSS sempre estático */}
-      <link rel="stylesheet" href="/assets/styles.css" />
-
-      {/* Scripts só no cliente, após a hidratação */}
-      <Script src="/assets/app.js" strategy="afterInteractive" />
+      {/* carrega JS depois que a página estiver interativa (evita “sumir”) */}
+      <Script src="/assets/app.js?v=3" strategy="afterInteractive" />
     </>
   );
 }
