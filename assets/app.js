@@ -76,52 +76,60 @@
   });
 
   // ===== Canvas (gráfico responsivo) =====
-  var canvas = $("chart"), ctx = canvas.getContext("2d");
+var canvas = $("chart"), ctx = canvas.getContext("2d");
 
-  // Garante que o *tamanho interno* do canvas siga o CSS (senão o gráfico some/borra)
-  function resizeCanvas(){
-    var cssW = (canvas.clientWidth || canvas.parentElement.clientWidth || 600);
-    var cssH = (canvas.clientHeight || 260);
-    var ratio = Math.max(1, Math.floor(window.devicePixelRatio || 1));
-    // ajuste do buffer interno
-    canvas.width  = Math.floor(cssW * ratio);
-    canvas.height = Math.floor(cssH * ratio);
-    // reset transform para 1:1 nas coordenadas lógicas
-    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+function resizeCanvas() {
+  // Usa o tamanho real no layout (CSS) para configurar o buffer interno
+  var rect = canvas.getBoundingClientRect();
+  var cssW = Math.max(1, Math.floor(rect.width || canvas.clientWidth || 600));
+  var cssH = Math.max(1, Math.floor(rect.height || 260));
+  var dpr  = (window.devicePixelRatio || 1);
+
+  // configura o buffer interno do canvas
+  canvas.width  = cssW * dpr;
+  canvas.height = cssH * dpr;
+
+  // reseta e aplica escala. Depois do scale, desenhamos em "pixels CSS".
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.scale(dpr, dpr);
+
+  // guarda tamanhos CSS pra usar no desenho
+  canvas._cssW = cssW;
+  canvas._cssH = cssH;
+}
+window.addEventListener("resize", function () { resizeCanvas(); drawChart(state.active); });
+resizeCanvas();
+
+function drawChart(sym) {
+  var d = state.data[sym] || { series: [] };
+
+  // use sempre os tamanhos CSS salvos no resize
+  var W = canvas._cssW || 600;
+  var H = canvas._cssH || 260;
+
+  ctx.clearRect(0, 0, W, H);
+
+  var series = d.series || [];
+  if (!series.length) return; // ainda sem dados, não desenha
+
+  var min = Math.min.apply(null, series);
+  var max = Math.max.apply(null, series);
+  if (!isFinite(min) || !isFinite(max) || min === max) {
+    min = (d.px || 0) - 1;
+    max = (d.px || 0) + 1;
   }
-  window.addEventListener("resize", function(){ resizeCanvas(); drawChart(state.active); });
-  resizeCanvas();
 
-  function drawChart(sym){
-    var d = state.data[sym] || { series:[] };
-    var W = canvas.width, H = canvas.height;
-    // Como setamos transform para ratio, usamos o tamanho *CSS* lógico:
-    var ratio = Math.max(1, Math.floor(window.devicePixelRatio || 1));
-    W = Math.floor(W/ratio); H = Math.floor(H/ratio);
-
-    ctx.clearRect(0,0,W,H);
-
-    var series = d.series || [];
-    if(!series.length) return;
-
-    var min = Math.min.apply(null, series);
-    var max = Math.max.apply(null, series);
-    if(!isFinite(min) || !isFinite(max) || min===max){
-      min = (d.px||0) - 1;
-      max = (d.px||0) + 1;
-    }
-
-    var xstep = W / Math.max(1, series.length - 1);
-    ctx.beginPath();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = "#00ffa3";
-    series.forEach(function(v,i){
-      var x = i * xstep;
-      var y = H - ((v - min) / (max - min + 1e-9)) * (H - 10) - 5;
-      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-    });
-    ctx.stroke();
-  }
+  var xstep = W / Math.max(1, series.length - 1);
+  ctx.beginPath();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "#00ffa3";
+  series.forEach(function (v, i) {
+    var x = i * xstep;
+    var y = H - ((v - min) / (max - min + 1e-9)) * (H - 10) - 5;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+}
 
   // ===== Quote remoto (com anti-cache) =====
   async function fetchQuote(sym){
