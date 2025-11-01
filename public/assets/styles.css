@@ -47,9 +47,14 @@ body{
 .ticker.active{ background:#101522; border-color:#24304a }
 .ticker .pct.up{ color:var(--ok) } .ticker .pct.down{ color:var(--danger) }
 
+/* >>> NOVO: bloco à esquerda com símbolo + bandeira e preço vivo */
+.ticker .lhs{ display:flex; align-items:center; gap:8px }
+.ticker .sym{ font-weight:700 }
+.ticker .px{ color:#e9edf3; opacity:.92; font-variant-numeric:tabular-nums; min-width:74px; text-align:right }
+
 /* ===== Cabeçalho do centro ===== */
 .row{ display:flex; align-items:center; gap:12px; flex-wrap:wrap }
-.title-row{ display:flex; align-items:center; gap:12px }
+.title-row{ display:flex; align-items:center; gap:12px; justify-content:space-between }
 h1{ font-size:22px; margin:0 }
 .price{ font-size:36px; font-weight:800 }
 
@@ -71,25 +76,25 @@ h1{ font-size:22px; margin:0 }
 
 /* ===== Barra de Timeframes / Zoom ===== */
 /* aceita tanto #tfbar quanto .tfbar */
-#tfbar, .tfbar{ display:flex; align-items:center; gap:10px; flex-wrap:wrap }
-#tfbar .group, .tfbar .group{
+#tfbar,.tfbar{ display:flex; align-items:center; gap:10px; flex-wrap:wrap }
+#tfbar .group,.tfbar .group{
   display:flex; align-items:center; gap:8px; background:#0e1118; border:1px solid var(--line);
   padding:6px; border-radius:10px;
 }
 
-/* Botões de timeframe “modernos” (classe .tf) */
-#tfbar .tf, .tfbar .tf{
+/* Botões de timeframe (classe .tf) */
+#tfbar .tf,.tfbar .tf{
   appearance:none; background:#0f1420; color:#c7d1e6; border:1px solid #22304a;
   padding:6px 10px; border-radius:8px; cursor:pointer; font-weight:600; font-size:13px;
-  transition:background .15s,border-color .15s,transform .06s,color .15s, box-shadow .15s;
+  transition:background .15s,border-color .15s,transform .06s,color .15s,box-shadow .15s;
 }
-#tfbar .tf:hover, .tfbar .tf:hover{ background:#111a2a; border-color:#2b3a57 }
-#tfbar .tf:active, .tfbar .tf:active{ transform:translateY(1px) }
-#tfbar .tf.active, .tfbar .tf.active{
+#tfbar .tf:hover,.tfbar .tf:hover{ background:#111a2a; border-color:#2b3a57 }
+#tfbar .tf:active,.tfbar .tf:active{ transform:translateY(1px) }
+#tfbar .tf.active,.tfbar .tf.active{
   background:#122036; border-color:#2f4b77; color:#d9e6ff; box-shadow:0 0 0 2px rgba(66,170,255,.15);
 }
 
-/* Compatibilidade: se o HTML usar .timeframes com .pill[data-tf] */
+/* Compatibilidade: .timeframes .pill[data-tf] */
 .timeframes .pill[data-tf]{
   background:#0f1420; border-color:#22304a; color:#c7d1e6; cursor:pointer;
   transition:background .15s,border-color .15s,color .15s, box-shadow .15s;
@@ -102,7 +107,7 @@ h1{ font-size:22px; margin:0 }
 /* Zoom */
 .zoom{ display:flex; align-items:center; gap:6px }
 .zoom .tf{ width:36px; text-align:center; padding:6px 0 }
-.zoom .reset, #resetZoom{
+.zoom .reset,#resetZoom{
   background:#151a26; color:#9fb7ff; border:1px solid #29406b; border-radius:8px; padding:6px 10px; cursor:pointer;
 }
 #zoomIn,#zoomOut{
@@ -147,5 +152,5 @@ h1{ font-size:22px; margin:0 }
 @media (max-width:1024px){
   .layout{ grid-template-columns:1fr; grid-template-rows:auto auto auto }
   #chart{ height:220px }
-  #tfbar .group, .tfbar .group{ width:100%; justify-content:flex-start; flex-wrap:wrap }
+  #tfbar .group,.tfbar .group{ width:100%; justify-content:flex-start; flex-wrap:wrap }
 }
