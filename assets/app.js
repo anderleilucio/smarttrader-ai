@@ -1,4 +1,9 @@
 (function () {
+  // ===== CONFIGURAÇÃO DO FEED =====
+  const FINNHUB_KEY = "d42pb1hr01qorlesfdtgd42pb1hr01qorlesfdu0"; // Sua chave Finnhub
+  const USE_LIVE = true;                     // ativa dados reais
+  const LIVE_INTERVAL_MS = 5000;             // intervalo de atualização (5s)
+
   // ===== Estado base =====
   var state = {
     active: "TSLA",
@@ -17,96 +22,89 @@
   // ===== Utils =====
   function $(id) { return document.getElementById(id); }
   function fmt(v) { return (v >= 0 ? "+" : "") + (v * 100).toFixed(2) + "%"; }
+  function isBR(sym) { return /\d$/.test(sym); }
 
-  // símbolo BR termina com dígito (VALE3, PETR4, ITUB4...)
-  function isBR(sym){ return /\d$/.test(sym); }
-
-  var usdFmt = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
-  var brlFmt = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
-  function moneyFor(sym, v){
+  const usdFmt = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+  const brlFmt = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+  function moneyFor(sym, v) {
     return isBR(sym) ? brlFmt.format(v) : usdFmt.format(v);
   }
 
-  // Título da página (marca)
   document.title = "SmartTrader AI";
 
   // ===== Relógio UTC =====
-  function clockUTC() { return new Date().toISOString().slice(11, 19) + "Z"; } // HH:MM:SSZ
-  function tickClock() { var el=$("clock"); if(el) el.textContent = "UTC — " + clockUTC(); }
+  function clockUTC() { return new Date().toISOString().slice(11, 19) + "Z"; }
+  function tickClock() { var el = $("clock"); if (el) el.textContent = "UTC — " + clockUTC(); }
   tickClock();
   setInterval(tickClock, 1000);
 
   // ===== Lista de tickers =====
   var list = $("list");
   function drawList(q) {
-    if(!list) return;
+    if (!list) return;
     list.innerHTML = "";
     Object.keys(state.data)
-      .filter(function (s) { return !q || s.toLowerCase().indexOf(q.toLowerCase()) > -1; })
-      .forEach(function (sym) {
+      .filter(s => !q || s.toLowerCase().includes(q.toLowerCase()))
+      .forEach(sym => {
         var d = state.data[sym];
         var row = document.createElement("div");
         row.className = "ticker";
         row.innerHTML =
-          '<div><strong>' + sym + "</strong></div>" +
-          '<div class="pct ' + (d.chg >= 0 ? "up" : "down") + '">' + fmt(d.chg) + "</div>";
+          `<div><strong>${sym}</strong></div>` +
+          `<div class="pct ${d.chg >= 0 ? "up" : "down"}">${fmt(d.chg)}</div>`;
         row.onclick = function () { state.active = sym; drawList($("q").value); refresh(); };
         list.appendChild(row);
       });
   }
   var qinput = $("q");
-  if (qinput) qinput.addEventListener("input", function (e) { drawList(e.target.value); });
+  if (qinput) qinput.addEventListener("input", e => drawList(e.target.value));
 
-  // ===== Série simulada =====
+  // ===== Série inicial simulada =====
   var N = 120;
-  if (!Object.values) Object.values = function (o) { return Object.keys(o).map(function (k) { return o[k]; }); };
-  Object.values(state.data).forEach(function (d) {
+  Object.values(state.data).forEach(d => {
     if (d.series.length === 0) {
       var x = d.px;
       for (var i = 0; i < N; i++) {
-        x = x * (1 + (Math.random() - 0.5) * 0.002);
+        x *= (1 + (Math.random() - 0.5) * 0.002);
         d.series.push(x);
       }
     }
   });
 
-  // ===== Gráfico (canvas responsivo) =====
+  // ===== Canvas (gráfico) =====
   var canvas = $("chart");
   var ctx = canvas ? canvas.getContext("2d") : null;
-
   function resizeCanvas() {
-    if(!canvas || !ctx) return;
-    // Ajusta para o CSS width atual (retina friendly)
-    var w = canvas.clientWidth || (canvas.parentElement && canvas.parentElement.clientWidth) || 600;
+    if (!canvas || !ctx) return;
+    var w = canvas.clientWidth || 600;
     var h = canvas.clientHeight || 260;
     var ratio = window.devicePixelRatio || 1;
-    canvas.width = Math.floor(w * ratio);
-    canvas.height = Math.floor(h * ratio);
+    canvas.width = w * ratio;
+    canvas.height = h * ratio;
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
   }
-  window.addEventListener("resize", function () { resizeCanvas(); drawChart(state.active); });
+  window.addEventListener("resize", () => { resizeCanvas(); drawChart(state.active); });
   resizeCanvas();
 
   function drawChart(sym) {
-    if(!canvas || !ctx) return;
+    if (!canvas || !ctx) return;
     var d = state.data[sym];
     var W = canvas.width;
     var H = canvas.height;
     ctx.clearRect(0, 0, W, H);
 
-    var min = Math.min.apply(null, d.series);
-    var max = Math.max.apply(null, d.series);
-    if (!isFinite(min) || !isFinite(max) || min === max) { // proteção
+    var min = Math.min(...d.series);
+    var max = Math.max(...d.series);
+    if (!isFinite(min) || !isFinite(max) || min === max) {
       min = (d.px || 0) - 1;
       max = (d.px || 0) + 1;
     }
 
-    var xstep = W / Math.max(1, (d.series.length - 1));
+    var xstep = W / Math.max(1, d.series.length - 1);
     ctx.beginPath();
     ctx.lineWidth = 2;
     ctx.strokeStyle = "#00ffa3";
-
-    d.series.forEach(function (v, i) {
+    d.series.forEach((v, i) => {
       var x = i * xstep;
       var y = H - ((v - min) / (max - min + 1e-9)) * (H - 10) - 5;
       if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
@@ -114,46 +112,79 @@
     ctx.stroke();
   }
 
-  // ===== Ticker de preços simulado =====
-  setInterval(function () {
-    Object.keys(state.data).forEach(function (sym) {
-      var d = state.data[sym];
-      var last = d.series[d.series.length - 1];
-      var next = last * (1 + (Math.random() - 0.48) * 0.004);
-      d.series.push(next);
-      if (d.series.length > N) d.series.shift();
-      d.chg = (next / d.series[0] - 1);
-      d.px = next;
-    });
+  // ===== Fetch de cotações reais =====
+  async function fetchUSQuote(sym) {
+    const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(sym)}&token=${FINNHUB_KEY}`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error("Erro Finnhub: " + r.status);
+    const j = await r.json();
+    const px = j.c;
+    const chg = (px && j.pc) ? (px / j.pc - 1) : 0;
+    return { px, chg };
+  }
+
+  async function fetchBRQuote(sym) {
+    const url = `https://brapi.dev/api/quote/${encodeURIComponent(sym)}?range=1d&interval=1m`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error("Erro brapi: " + r.status);
+    const j = await r.json();
+    const r0 = j.results && j.results[0];
+    const px = r0?.regularMarketPrice ?? r0?.close ?? r0?.price;
+    const chg = (r0?.regularMarketChangePercent ?? 0) / 100;
+    return { px, chg };
+  }
+
+  async function fetchQuote(sym) {
+    try {
+      return isBR(sym) ? await fetchBRQuote(sym) : await fetchUSQuote(sym);
+    } catch (e) {
+      console.warn("Erro no fetchQuote", sym, e);
+      const d = state.data[sym];
+      return { px: d?.px ?? 0, chg: d?.chg ?? 0 };
+    }
+  }
+
+  async function updateLiveOnce() {
+    const sym = state.active;
+    const d = state.data[sym];
+    if (!d) return;
+    const { px, chg } = await fetchQuote(sym);
+    if (!px) return;
+    const next = px;
+    d.series.push(next);
+    if (d.series.length > N) d.series.shift();
+    d.px = px;
+    d.chg = chg;
     refresh();
     checkAlerts();
-  }, 1200);
+  }
+
+  function startLive() {
+    if (!USE_LIVE) return;
+    updateLiveOnce();
+    if (window.__liveTimer) clearInterval(window.__liveTimer);
+    window.__liveTimer = setInterval(updateLiveOnce, LIVE_INTERVAL_MS);
+  }
+
+  // ===== Atualização ao vivo =====
+  startLive();
 
   // ===== UI Refresh =====
   function refresh() {
     var sym = state.active;
     var d = state.data[sym];
-    var symEl = $("sym");
-    var priceEl = $("price");
-    var chgEl = $("chg");
-
-    if (symEl) symEl.textContent = sym;
-    if (priceEl) priceEl.textContent = moneyFor(sym, d.px);
-    if (chgEl) {
-      chgEl.textContent = fmt(d.chg);
-      chgEl.className = "chg " + (d.chg >= 0 ? "up" : "down");
-    }
-
+    $("sym").textContent = sym;
+    $("price").textContent = moneyFor(sym, d.px);
+    var chg = $("chg");
+    chg.textContent = fmt(d.chg);
+    chg.className = "chg " + (d.chg >= 0 ? "up" : "down");
     drawChart(sym);
     drawPositions();
   }
 
   // ===== Posições =====
   function drawPositions() {
-    var table = $("pos");
-    if(!table) return;
-    var tb = table.getElementsByTagName("tbody")[0];
-    if(!tb) return;
+    var tb = $("pos").getElementsByTagName("tbody")[0];
     tb.innerHTML = "";
     Object.keys(state.positions).forEach(function (sym) {
       var pos = state.positions[sym];
@@ -161,10 +192,9 @@
       var pl = (px - pos.avg) * pos.qty;
       var tr = document.createElement("tr");
       tr.innerHTML =
-        "<td>" + sym + "</td>" +
-        "<td>" + pos.qty + "</td>" +
-        "<td>" + moneyFor(sym, pos.avg) + "</td>" +
-        '<td class="' + (pl >= 0 ? "ok" : "danger") + '">' + moneyFor(sym, pl) + "</td>";
+        `<td>${sym}</td><td>${pos.qty}</td>` +
+        `<td>${moneyFor(sym, pos.avg)}</td>` +
+        `<td class="${pl >= 0 ? "ok" : "danger"}">${moneyFor(sym, pl)}</td>`;
       tb.appendChild(tr);
     });
   }
@@ -173,10 +203,8 @@
     var box = document.createElement("div");
     box.className = "news-item";
     box.innerHTML =
-      "<div>" + txt + "</div>" +
-      '<div class="muted small">' + new Date().toLocaleTimeString() + "</div>";
-    var news = $("news");
-    if(news) news.prepend(box);
+      `<div>${txt}</div><div class="muted small">${new Date().toLocaleTimeString()}</div>`;
+    $("news").prepend(box);
   }
 
   function trade(side, sym, qty, px) {
@@ -190,14 +218,14 @@
       if (p.qty === 0) p.avg = px;
     }
     state.positions[sym] = p;
-    pushNews("🟢 Ordem " + (side === "buy" ? "comprada" : "vendida") + ": " + qty + " " + sym + " @ " + moneyFor(sym, px) + " (paper)");
+    pushNews(`🟢 Ordem ${side === "buy" ? "comprada" : "vendida"}: ${qty} ${sym} @ ${moneyFor(sym, px)} (paper)`);
     drawPositions();
   }
 
   // ===== Alertas =====
   function checkAlerts() {
-    state.alerts.forEach(function (a) { a._hit = false; });
-    state.alerts.forEach(function (a) {
+    state.alerts.forEach(a => a._hit = false);
+    state.alerts.forEach(a => {
       var d = state.data[a.sym]; if (!d) return;
       var px = d.px, chg = d.chg * 100;
       if (a.cond === "above" && px >= a.val) a._hit = true;
@@ -205,82 +233,63 @@
       if (a.cond === "changeUp" && chg >= a.val) a._hit = true;
       if (a.cond === "changeDown" && chg <= a.val) a._hit = true;
     });
-    var keep = [];
-    state.alerts.forEach(function (a) {
+    state.alerts = state.alerts.filter(a => {
       if (a._hit) {
-        pushNews("🔔 Alerta: " + a.sym + " atingiu " + a.cond + " " + a.val);
-      } else keep.push(a);
+        pushNews(`🔔 Alerta: ${a.sym} atingiu ${a.cond} ${a.val}`);
+        return false;
+      }
+      return true;
     });
-    state.alerts = keep;
   }
 
   // ===== Botões =====
-  var buyBtn = $("buyBtn"), sellBtn = $("sellBtn"), alertBtn = $("alertBtn");
-  if (buyBtn) buyBtn.onclick = function () {
-    var sym = state.active, px = state.data[sym].px;
-    trade("buy", sym, 10, px);
-  };
-  if (sellBtn) sellBtn.onclick = function () {
-    var sym = state.active, px = state.data[sym].px;
-    trade("sell", sym, 10, px);
-  };
-  if (alertBtn) alertBtn.onclick = function () {
-    // cria alerta "preço acima de +2%"
-    var sym = state.active, px = state.data[sym].px;
-    openAlert(sym, "above", (px * 1.02).toFixed(2));
-  };
+  $("buyBtn").onclick = () => trade("buy", state.active, 10, state.data[state.active].px);
+  $("sellBtn").onclick = () => trade("sell", state.active, 10, state.data[state.active].px);
+  $("alertBtn").onclick = () => openAlert(state.active, "above", (state.data[state.active].px * 1.02).toFixed(2));
 
   // ===== Modais =====
   function openOrder(side) {
-    var orderTitle = $("orderTitle");
-    if(orderTitle) orderTitle.textContent = side === "buy" ? "Comprar" : "Vender";
-    var mSym=$("mSym"), mSide=$("mSide"), mQty=$("mQty"), mPx=$("mPx");
-    if(mSym)  mSym.value  = state.active;
-    if(mSide) mSide.value = side;
-    if(mQty)  mQty.value  = 10;
-    if(mPx)   mPx.value   = state.data[state.active].px.toFixed(2);
-    var modal = $("orderModal"); if(modal) modal.classList.add("open");
+    $("orderTitle").textContent = side === "buy" ? "Comprar" : "Vender";
+    $("mSym").value = state.active;
+    $("mSide").value = side;
+    $("mQty").value = 10;
+    $("mPx").value = state.data[state.active].px.toFixed(2);
+    $("orderModal").classList.add("open");
   }
-  function closeOrder() { var m=$("orderModal"); if(m) m.classList.remove("open"); }
+  function closeOrder() { $("orderModal").classList.remove("open"); }
 
   function openAlert(sym, cond, val) {
-    var aSym=$("aSym"), aCond=$("aCond"), aVal=$("aVal");
-    if(aSym)  aSym.value  = sym;
-    if(aCond) aCond.value = cond;
-    if(aVal)  aVal.value  = val;
-    var modal = $("alertModal"); if(modal) modal.classList.add("open");
+    $("aSym").value = sym; $("aCond").value = cond; $("aVal").value = val;
+    $("alertModal").classList.add("open");
   }
-  function closeAlert() { var m=$("alertModal"); if(m) m.classList.remove("open"); }
+  function closeAlert() { $("alertModal").classList.remove("open"); }
 
-  var cancelOrder=$("cancelOrder"), closeOrderX=$("closeOrder"), confirmOrder=$("confirmOrder");
-  if(cancelOrder) cancelOrder.onclick = closeOrder;
-  if(closeOrderX) closeOrderX.onclick = closeOrder;
-  if(confirmOrder) confirmOrder.onclick = function () {
-    var sym = ($("mSym").value || "").trim().toUpperCase();
+  $("cancelOrder").onclick = closeOrder;
+  $("closeOrder").onclick = closeOrder;
+  $("confirmOrder").onclick = function () {
+    var sym = $("mSym").value.trim().toUpperCase();
     var side = $("mSide").value;
     var qty = Math.max(1, parseInt($("mQty").value || "1", 10));
-    var px  = state.data[sym] ? state.data[sym].px : parseFloat($("mPx").value);
+    var px = state.data[sym] ? state.data[sym].px : parseFloat($("mPx").value);
     trade(side, sym, qty, px);
     closeOrder();
   };
 
-  var cancelAlert=$("cancelAlert"), closeAlertX=$("closeAlert"), confirmAlert=$("confirmAlert");
-  if(cancelAlert) cancelAlert.onclick = closeAlert;
-  if(closeAlertX) closeAlertX.onclick = closeAlert;
-  if(confirmAlert) confirmAlert.onclick = function () {
-    var sym = ($("aSym").value || "").trim().toUpperCase();
+  $("cancelAlert").onclick = closeAlert;
+  $("closeAlert").onclick = closeAlert;
+  $("confirmAlert").onclick = function () {
+    var sym = $("aSym").value.trim().toUpperCase();
     var cond = $("aCond").value;
     var val = parseFloat($("aVal").value);
     if (isFinite(val)) {
-      state.alerts.push({ sym: sym, cond: cond, val: val });
-      pushNews("✅ Alerta criado: " + sym + " " + cond + " " + val);
+      state.alerts.push({ sym, cond, val });
+      pushNews(`✅ Alerta criado: ${sym} ${cond} ${val}`);
     }
     closeAlert();
   };
 
-  // Duplo clique abre modal de ordem
-  if (buyBtn)  buyBtn.addEventListener("dblclick", function () { openOrder("buy"); });
-  if (sellBtn) sellBtn.addEventListener("dblclick", function () { openOrder("sell"); });
+  $("buyBtn").addEventListener("dblclick", () => openOrder("buy"));
+  $("sellBtn").addEventListener("dblclick", () => openOrder("sell"));
 
   // ===== Inicialização =====
   drawList("");
