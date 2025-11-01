@@ -2,37 +2,30 @@
 (function () {
   // ===== Config =====
   var REFRESH_MS  = 6000;            // atualiza a cada 6s
-  var HISTORY_LEN = 120;             // tamanho máximo da série mantida em memória
+  var HISTORY_LEN = 120;             // buffer máximo por símbolo
   var DEFAULTS    = ["TSLA","NVDA","AAPL","AMZN","MSFT","ITUB4","VALE3","PETR4"];
 
-  // Pontos “visíveis” por timeframe (aproximados ao nosso tick de 6s)
+  // Pontos “visíveis” por timeframe (aprox. dado nosso tick de 6s)
   var TF_POINTS = {
-    "1m": 10,   // ~1 min
-    "1h": 60,   // ~1 hora
-    "5h": 90,
-    "12h": 110,
-    "24h": 120,
-    "1w": 120,
-    "1mo": 120,
-    "2mo": 120,
-    "3mo": 120,
-    "ytd": 120
+    "1m": 10,   "1h": 60,  "5h": 90, "12h": 110,
+    "24h": 120, "1w": 120, "1mo":120, "2mo":120, "3mo":120, "ytd":120
   };
 
   // ===== Estado =====
   var state = {
     active: "TSLA",
-    data: {},        // {SYM:{px, chg, series:[]}}
-    positions: {},   // {SYM:{qty, avg}}
-    alerts: [],      // [{sym, cond, val, _hit?}]
-    viewN: 60,       // qtde de pontos visíveis
-    panStart: null   // {x, startIndex} enquanto arrasta
+    data: {},         // {SYM:{px, chg, series:[]}}
+    positions: {},    // {SYM:{qty, avg}}
+    alerts: [],       // [{sym, cond, val, _hit?}]
+    viewN: 60,        // qte de pontos visíveis
+    offset: 0,        // deslocamento p/ esquerda (0 = fim/série mais recente)
+    pan: null         // {x,startOffset} durante arraste
   };
 
   // ===== Helpers =====
   function $(id){ return document.getElementById(id); }
-  function onClick(id, fn){ var el=$(id); if(el) el.onclick = fn; }
   function on(el, ev, fn){ if(el) el.addEventListener(ev, fn); }
+  function onClick(id, fn){ var el=$(id); if(el) el.onclick = fn; }
   function fmtPct(v){ return (v>=0?"+":"") + ((v||0)*100).toFixed(2) + "%"; }
   function isBR(sym){ return /\d$/.test(sym); }
   function moneyOf(sym, v){
@@ -42,8 +35,8 @@
     var s = fmt.format(Math.abs(v||0));
     return (v<0?"-":"") + s.replace("-", "");
   }
+  function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
 
-  // Marca
   document.title = "SmartTrader AI";
 
   // ===== Relógio UTC =====
@@ -71,6 +64,7 @@
           '<div class="pct '+((d.chg||0)>=0?'up':'down')+'">'+fmtPct(d.chg||0)+'</div>';
         row.onclick = function () {
           state.active = sym;
+          state.offset = 0; // ao trocar de ativo, voltar ao fim
           drawList($("q")?.value);
           refresh(true);
         };
@@ -85,7 +79,11 @@
         var sym = e.target.value.trim().toUpperCase();
         if(sym){
           if(!state.data[sym]) state.data[sym] = { px:null, chg:0, series:[] };
-          state.active = sym; e.target.blur(); drawList(sym); refresh(true);
+          state.active = sym;
+          state.offset = 0;
+          e.target.blur();
+          drawList(sym);
+          refresh(true);
         }
       }
     });
@@ -106,14 +104,20 @@
     ctx.scale(dpr, dpr);
     canvas._cssW = cssW; canvas._cssH = cssH;
   }
-  window.addEventListener("resize", function () { resizeCanvas(); drawChart(state.active); });
+  on(window, "resize", function(){ resizeCanvas(); drawChart(state.active); });
   resizeCanvas();
 
+  // Calcula janela visível aplicando viewN + offset
   function getViewport(series){
     var n = series.length;
-    if (n === 0) return {start:0, end:0};
-    var view = Math.max(2, Math.min(state.viewN, n));
-    return { start: Math.max(0, n - view), end: n-1 };
+    if (n === 0) return {start:0, end:0, view:0};
+    var view = clamp(state.viewN, 2, n);
+    var maxOffset = Math.max(0, n - view);
+    state.offset = clamp(state.offset, 0, maxOffset);
+    var end   = n - 1 - state.offset;
+    var start = end - (view - 1);
+    if (start < 0){ start = 0; end = start + view - 1; }
+    return { start:start, end:end, view:view };
   }
 
   function drawChart(sym) {
@@ -128,8 +132,7 @@
     var vp = getViewport(series);
     var slice = series.slice(vp.start, vp.end+1);
 
-    // Caso somente 1 ponto visível, desenha linha central
-    if (slice.length === 1) {
+    if (slice.length <= 1) {
       var y = Math.floor(H/2);
       ctx.beginPath(); ctx.lineWidth = 2; ctx.strokeStyle = "#00ffa3";
       ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
@@ -178,10 +181,15 @@
         // primeira amostra: semente de 10 pontos p/ evitar linha reta
         if (s.length === 1) { for (var k=0;k<9;k++) s.unshift(v); }
 
-        if (s.length > HISTORY_LEN) s.shift();
+        // mantém tamanho do buffer
+        while (s.length > HISTORY_LEN) s.shift();
+
+        // Se o usuário NÃO está “grudado” no fim (offset>0), preserva pan.
+        // Apenas re-clampa o offset ao novo tamanho.
+        getViewport(s); // recalcula/clampa state.offset s/ alterar viewN
       }
     } catch (e) {
-      // fica silencioso
+      // silencioso
     }
   }
 
@@ -212,7 +220,7 @@
     var sym = state.active;
     var d = state.data[sym] || { px:null, chg:0, series:[] };
     var symEl=$("sym"), priceEl=$("price"), chgEl=$("chg");
-    if(symEl) symEl.textContent = sym;
+    if(symEl)   symEl.textContent = sym;
     if(priceEl) priceEl.textContent = (d.px==null) ? (isBR(sym) ? "R$ —" : "$ —") : moneyOf(sym, d.px);
     if(chgEl){ chgEl.textContent = fmtPct(d.chg||0); chgEl.className = "pill " + ((d.chg||0)>=0 ? "up" : "down"); }
 
@@ -285,6 +293,7 @@
   // ===== Timeframes & Zoom =====
   function setTimeframe(tf){
     state.viewN = Math.max(2, TF_POINTS[tf] || HISTORY_LEN);
+    state.offset = 0; // ao trocar timeframe, volta pro fim
     highlightTF();
     drawChart(state.active);
   }
@@ -295,20 +304,23 @@
     btns.forEach(function(b){
       var tf = b.getAttribute("data-tf");
       if (!tf) return;
-      var match = (Math.max(2, TF_POINTS[tf]||HISTORY_LEN) === Math.max(2, state.viewN));
+      var match = (Math.max(2, TF_POINTS[tf]||HISTORY_LEN) === Math.max(2, state.viewN)) && state.offset===0;
       b.classList.toggle("active", match);
     });
   }
-  function zoom(delta){ // delta > 0 => zoom in, < 0 => out
+  function zoom(delta){ // delta > 0 => in, < 0 => out
     var v = state.viewN;
     if (delta > 0) v = Math.max(5, Math.floor(v * 0.8));
-    else          v = Math.min(HISTORY_LEN, Math.ceil(v * 1.25));
+    else           v = Math.min(HISTORY_LEN, Math.ceil(v * 1.25));
     state.viewN = v;
+    // manter janela “colada” no fim se já estava no fim
+    state.offset = clamp(state.offset, 0, Math.max(0, (state.data[state.active]?.series.length||0) - state.viewN));
     drawChart(state.active);
     highlightTF();
   }
   function resetZoom(){
     state.viewN = 60;
+    state.offset = 0;
     drawChart(state.active);
     highlightTF();
   }
@@ -336,59 +348,34 @@
     }, { passive:false });
   }
 
-  // Pan (arrastar)
+  // Pan (arrastar) — persiste em state.offset
   if (canvas){
     on(canvas, "mousedown", function(e){
       var rect = canvas.getBoundingClientRect();
-      state.panStart = { x: e.clientX - rect.left, startIndex: getViewport(state.data[state.active]?.series||[]).start };
+      state.pan = {
+        x: e.clientX - rect.left,
+        startOffset: state.offset
+      };
     });
-    on(window, "mouseup", function(){ state.panStart = null; });
+    on(window, "mouseup", function(){ state.pan = null; });
     on(window, "mousemove", function(e){
-      if(!state.panStart) return;
+      if(!state.pan) return;
       var series = state.data[state.active]?.series || [];
       var n = series.length; if (n < 2) return;
 
       var rect = canvas.getBoundingClientRect();
-      var dx = (e.clientX - rect.left) - state.panStart.x;
+      var dx = (e.clientX - rect.left) - state.pan.x;
+
+      // qtos pontos por pixel na janela atual
       var vp = getViewport(series);
-      var view = vp.end - vp.start + 1;
-      var perPx = view / (canvas._cssW || 1);
-      var shift = Math.round(dx * perPx);
+      var perPx = vp.view / (canvas._cssW || 1);
+      var shift = Math.round(dx * perPx); // arrastar p/ direita => shift positivo => offset aumenta
 
-      var start = Math.max(0, Math.min(n - view, state.panStart.startIndex - shift));
-      // simulamos pan alterando “janela” com viewN fixo usando um offset via prefix/suffix.
-      // Implementação simples: recorta a janela aplicando offset através de overflow invisível (render usa slice).
-      // Para manter simples, manipulamos um buffer derivado — aqui fazemos “scroll” empurrando pontos
-      // virtualmente: ao pan, apenas redesenhamos como se a janela tivesse mudado de início.
-      // Para isso, temporariamente copiamos os últimos `view` pontos começando em `start`.
-      var temp = series.slice(start, start + view);
-      drawTempSeries(temp);
+      var maxOffset = Math.max(0, n - vp.view);
+      state.offset = clamp(state.pan.startOffset + shift, 0, maxOffset);
+      drawChart(state.active);
+      // não mexe no highlightTF (pan "desativa" o estado active dos botões)
     });
-  }
-  function drawTempSeries(temp){
-    if(!canvas || !ctx) return;
-    var W = canvas._cssW || 600, H = canvas._cssH || 260;
-    ctx.clearRect(0, 0, W, H);
-
-    if (temp.length <= 1) {
-      var y = Math.floor(H/2);
-      ctx.beginPath(); ctx.lineWidth = 2; ctx.strokeStyle = "#00ffa3";
-      ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
-      return;
-    }
-    var min = Math.min.apply(null, temp);
-    var max = Math.max.apply(null, temp);
-    if (!isFinite(min) || !isFinite(max) || min === max) { min=(temp[0]||0)-1; max=(temp[0]||0)+1; }
-
-    var xstep = W / Math.max(1, temp.length - 1);
-    ctx.beginPath(); ctx.lineWidth = 2; ctx.strokeStyle = "#00ffa3";
-    for (var i=0;i<temp.length;i++){
-      var v = temp[i];
-      var x = i * xstep;
-      var y = H - ((v - min) / (max - min + 1e-9)) * (H - 10) - 5;
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
   }
 
   // ===== Modais e ações =====
@@ -433,11 +420,6 @@
     if(sym && isFinite(val)){ state.alerts.push({ sym:sym, cond:cond, val:val }); pushNews("✅ Alerta criado: "+sym+" "+cond+" "+val); }
     closeAlert();
   });
-
-  // Duplo clique para abrir modal completo
-  var buyBtn = $("buyBtn"), sellBtn = $("sellBtn");
-  on(buyBtn,  "dblclick", function(){ openOrder("buy"); });
-  on(sellBtn, "dblclick", function(){ openOrder("sell"); });
 
   // Primeira render
   drawList("");
