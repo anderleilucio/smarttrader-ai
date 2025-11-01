@@ -14,7 +14,7 @@
   // ===== Estado =====
   var state = {
     active: "TSLA",
-    data: {},         // {SYM:{px, chg, series:[]}}
+    data: {},         // {SYM:{px, chg, series:[], times:[]}}
     positions: {},    // {SYM:{qty, avg}}
     alerts: [],       // [{sym, cond, val, _hit?}]
     viewN: 60,        // qte de pontos visíveis
@@ -24,7 +24,7 @@
 
   // ===== Helpers =====
   function $(id){ return document.getElementById(id); }
-  function on(el, ev, fn){ if(el) el.addEventListener(ev, fn); }
+  function on(el, ev, fn, opts){ if(el) el.addEventListener(ev, fn, opts||false); }
   function onClick(id, fn){ var el=$(id); if(el) el.onclick = fn; }
   function fmtPct(v){ return (v>=0?"+":"") + ((v||0)*100).toFixed(2) + "%"; }
   function isBR(sym){ return /\d$/.test(sym); }
@@ -37,6 +37,20 @@
   }
   function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
 
+  // rótulo de tick conforme span
+  function fmtTick(ts, spanMs){
+    var d = new Date(ts);
+    if (spanMs > 2*24*3600e3) {
+      var dd = String(d.getDate()).padStart(2,'0');
+      var mm = String(d.getMonth()+1).padStart(2,'0');
+      return dd + "/" + mm;
+    } else if (spanMs > 6*3600e3) {
+      return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+    } else {
+      return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+    }
+  }
+
   document.title = "SmartTrader AI";
 
   // ===== Relógio UTC =====
@@ -44,7 +58,7 @@
   tickClock(); setInterval(tickClock, 1000);
 
   // ===== Lista inicial =====
-  DEFAULTS.forEach(function(s){ state.data[s] = { px:null, chg:0, series:[] }; });
+  DEFAULTS.forEach(function(s){ state.data[s] = { px:null, chg:0, series:[], times:[] }; });
 
   // ===== Render da lista =====
   var list = $("list");
@@ -78,7 +92,7 @@
       if(e.key==="Enter"){
         var sym = e.target.value.trim().toUpperCase();
         if(sym){
-          if(!state.data[sym]) state.data[sym] = { px:null, chg:0, series:[] };
+          if(!state.data[sym]) state.data[sym] = { px:null, chg:0, series:[], times:[] };
           state.active = sym;
           state.offset = 0;
           e.target.blur();
@@ -122,15 +136,17 @@
 
   function drawChart(sym) {
     if(!canvas || !ctx) return;
-    var d = state.data[sym] || { series: [] };
+    var d = state.data[sym] || { series: [], times: [] };
     var W = canvas._cssW || 600, H = canvas._cssH || 260;
     ctx.clearRect(0, 0, W, H);
 
     var series = d.series || [];
+    var times  = d.times  || [];
     if (!series.length) return;
 
     var vp = getViewport(series);
     var slice = series.slice(vp.start, vp.end+1);
+    var tSlice = times.slice(vp.start, vp.end+1);
 
     if (slice.length <= 1) {
       var y = Math.floor(H/2);
@@ -143,15 +159,37 @@
     var max = Math.max.apply(null, slice);
     if (!isFinite(min) || !isFinite(max) || min === max) { min=(d.px||0)-1; max=(d.px||0)+1; }
 
+    // grade vertical
+    var ticks = Math.min(6, Math.max(3, Math.floor(slice.length/15)));
+    var stepIdx = Math.max(1, Math.floor(slice.length / (ticks - 1)));
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = "rgba(255,255,255,0.06)";
+    for (var i = 0; i < slice.length; i += stepIdx) {
+      var xg = (i / Math.max(1, slice.length - 1)) * W;
+      ctx.beginPath(); ctx.moveTo(xg, 0); ctx.lineTo(xg, H); ctx.stroke();
+    }
+
+    // curva
     var xstep = W / Math.max(1, slice.length - 1);
     ctx.beginPath(); ctx.lineWidth = 2; ctx.strokeStyle = "#00ffa3";
-    for (var i=0;i<slice.length;i++){
-      var v = slice[i];
-      var x = i * xstep;
-      var y = H - ((v - min) / (max - min + 1e-9)) * (H - 10) - 5;
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    for (var i2=0;i2<slice.length;i2++){
+      var v = slice[i2];
+      var x = i2 * xstep;
+      var y = H - ((v - min) / (max - min + 1e-9)) * (H - 18) - 6;
+      if (i2 === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     }
     ctx.stroke();
+
+    // rótulos eixo X
+    var spanMs = (tSlice[tSlice.length - 1] || 0) - (tSlice[0] || 0);
+    ctx.fillStyle = "#94a0b8";
+    ctx.font = "12px Inter, system-ui, sans-serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+    for (var j = 0; j < slice.length; j += stepIdx) {
+      var xTick = (j / Math.max(1, slice.length - 1)) * W;
+      var label = fmtTick(tSlice[j], spanMs);
+      ctx.fillText(label, xTick, H - 3);
+    }
   }
 
   // ===== Dados (quotes) =====
@@ -162,14 +200,17 @@
       var px  = (j && j.px  != null) ? j.px  : null;
       var chg = (j && j.chg != null) ? j.chg : 0;
 
-      if(!state.data[sym]) state.data[sym] = { px:null, chg:0, series:[] };
+      if(!state.data[sym]) state.data[sym] = { px:null, chg:0, series:[], times:[] };
       if(px != null){
         var slot = state.data[sym];
         slot.px  = px;
         slot.chg = chg;
 
         // Série com leve ruído quando repetir o mesmo preço (só visual)
-        var s = slot.series;
+        var s  = slot.series;
+        var st = slot.times;
+        var now = Date.now();
+
         var v = px;
         var last = s.length ? s[s.length - 1] : null;
         if (last !== null && Math.abs(px - last) < 1e-8) {
@@ -177,16 +218,19 @@
           v = px * (1 + noise);
         }
         s.push(v);
+        st.push(now);
 
         // primeira amostra: semente de 10 pontos p/ evitar linha reta
-        if (s.length === 1) { for (var k=0;k<9;k++) s.unshift(v); }
+        if (s.length === 1) {
+          for (var k=9; k>=1; k--) { s.unshift(v); st.unshift(now - k*REFRESH_MS); }
+        }
 
         // mantém tamanho do buffer
         while (s.length > HISTORY_LEN) s.shift();
+        while (st.length > HISTORY_LEN) st.shift();
 
-        // Se o usuário NÃO está “grudado” no fim (offset>0), preserva pan.
-        // Apenas re-clampa o offset ao novo tamanho.
-        getViewport(s); // recalcula/clampa state.offset s/ alterar viewN
+        // Re-clampa offset para preservar pan quando chegam novos dados
+        getViewport(s);
       }
     } catch (e) {
       // silencioso
@@ -218,7 +262,7 @@
   // ===== UI Principal =====
   function refresh(forceDraw){
     var sym = state.active;
-    var d = state.data[sym] || { px:null, chg:0, series:[] };
+    var d = state.data[sym] || { px:null, chg:0, series:[], times:[] };
     var symEl=$("sym"), priceEl=$("price"), chgEl=$("chg");
     if(symEl)   symEl.textContent = sym;
     if(priceEl) priceEl.textContent = (d.px==null) ? (isBR(sym) ? "R$ —" : "$ —") : moneyOf(sym, d.px);
@@ -313,7 +357,6 @@
     if (delta > 0) v = Math.max(5, Math.floor(v * 0.8));
     else           v = Math.min(HISTORY_LEN, Math.ceil(v * 1.25));
     state.viewN = v;
-    // manter janela “colada” no fim se já estava no fim
     state.offset = clamp(state.offset, 0, Math.max(0, (state.data[state.active]?.series.length||0) - state.viewN));
     drawChart(state.active);
     highlightTF();
@@ -366,15 +409,13 @@
       var rect = canvas.getBoundingClientRect();
       var dx = (e.clientX - rect.left) - state.pan.x;
 
-      // qtos pontos por pixel na janela atual
       var vp = getViewport(series);
       var perPx = vp.view / (canvas._cssW || 1);
-      var shift = Math.round(dx * perPx); // arrastar p/ direita => shift positivo => offset aumenta
+      var shift = Math.round(dx * perPx);
 
       var maxOffset = Math.max(0, n - vp.view);
       state.offset = clamp(state.pan.startOffset + shift, 0, maxOffset);
       drawChart(state.active);
-      // não mexe no highlightTF (pan "desativa" o estado active dos botões)
     });
   }
 
