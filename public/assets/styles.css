@@ -2,6 +2,8 @@
   --bg:#0b0b0f; --panel:#121318; --muted:#94a0b8; --line:#1e2330;
   --accent:#00ffa3; --accent-2:#42aaff; --danger:#ff5a7a; --ok:#00d47d; --text:#e9edf3;
 }
+
+/* ===== Reset básico ===== */
 *{ box-sizing:border-box }
 html,body{ height:100% }
 body{
@@ -9,40 +11,108 @@ body{
   font:500 15px/1.45 Inter, ui-sans-serif, system-ui, Segoe UI, Roboto, Arial, sans-serif;
   -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
 }
-.topbar{ position:sticky; top:0; z-index:10; display:flex; align-items:center; justify-content:space-between;
-  padding:12px 16px; border-bottom:1px solid var(--line); background:linear-gradient(180deg,#0f1016,#0b0b0f) }
+
+/* ===== Topo ===== */
+.topbar{
+  position:sticky; top:0; z-index:10; display:flex; align-items:center; justify-content:space-between;
+  padding:12px 16px; border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg,#0f1016,#0b0b0f)
+}
 .brand{ display:flex; align-items:center; gap:10px; font-weight:800; letter-spacing:.2px }
 .clock{ color:var(--muted); font-size:13px }
+
+/* ===== Layout ===== */
 .layout{ display:grid; grid-template-columns:280px 1fr 360px; gap:16px; padding:16px }
 .left,.center,.right{ background:var(--panel); border:1px solid var(--line); border-radius:12px }
 .left{ padding:12px }
-.center{ padding:14px; display:grid; grid-template-rows:auto auto auto 1fr auto; gap:12px; min-height:420px }
+.center{
+  padding:14px; display:grid;
+  grid-template-rows:auto auto auto 1fr auto; /* título • linha de ações • timeframes • gráfico • legenda */
+  gap:12px; min-height:420px
+}
 .right{ padding:12px; display:grid; grid-template-rows:auto 1fr; gap:12px }
-.search{ width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--line); background:#0e0f14; color:var(--text) }
+
+/* ===== Busca & lista ===== */
+.search{
+  width:100%; padding:10px 12px; border-radius:8px;
+  border:1px solid var(--line); background:#0e0f14; color:var(--text)
+}
 .list{ margin-top:10px; max-height:calc(100vh - 220px); overflow:auto }
-.ticker{ display:flex; align-items:center; justify-content:space-between; padding:10px; border-radius:8px; margin-bottom:8px; cursor:pointer; border:1px solid transparent; transition:.15s }
+.ticker{
+  display:flex; align-items:center; justify-content:space-between; padding:10px;
+  border-radius:8px; margin-bottom:8px; cursor:pointer; border:1px solid transparent; transition:.15s
+}
 .ticker:hover{ background:#0e0f14; border-color:#1d2130 }
 .ticker.active{ background:#101522; border-color:#24304a }
 .ticker .pct.up{ color:var(--ok) } .ticker .pct.down{ color:var(--danger) }
+
+/* ===== Cabeçalho do centro ===== */
 .row{ display:flex; align-items:center; gap:12px; flex-wrap:wrap }
 .title-row{ display:flex; align-items:center; gap:12px }
 h1{ font-size:22px; margin:0 }
 .price{ font-size:36px; font-weight:800 }
+
+/* ===== Chips, botões ===== */
 .pill{ border:1px solid var(--line); color:#b9c4da; background:#0f1420; padding:6px 10px; border-radius:999px }
 .pill.up{ color:var(--ok) } .pill.down{ color:var(--danger) }
-.btn{ background:var(--accent); color:#001510; border:none; padding:12px 18px; border-radius:10px; font-weight:800; cursor:pointer; letter-spacing:.2px; box-shadow:0 8px 24px rgba(0,255,163,.15) }
+
+.btn{
+  background:var(--accent); color:#001510; border:none; padding:12px 18px;
+  border-radius:10px; font-weight:800; cursor:pointer; letter-spacing:.2px;
+  box-shadow:0 8px 24px rgba(0,255,163,.15)
+}
+.btn:focus-visible{ outline:2px solid #1aeb9a; outline-offset:2px }
 .btn.sell{ background:#182028; color:#ffb3c7; border:1px solid #3a2538 }
 .btn.alert{ background:#182028; color:#9bd3ff; border:1px solid #273b55 }
-#chart{ width:100%; height:260px; display:block; background:#0d0f16; border:1px solid var(--line); border-radius:12px }
+
+/* ===== Barra de Timeframes / Zoom ===== */
+.tfbar{
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap
+}
+.tfbar .group{
+  display:flex; align-items:center; gap:8px; background:#0e1118; border:1px solid var(--line);
+  padding:6px; border-radius:10px
+}
+.tf{
+  appearance:none; background:#0f1420; color:#c7d1e6; border:1px solid #22304a;
+  padding:6px 10px; border-radius:8px; cursor:pointer; font-weight:600; font-size:13px;
+  transition:background .15s,border-color .15s,transform .06s
+}
+.tf:hover{ background:#111a2a; border-color:#2b3a57 }
+.tf:active{ transform:translateY(1px) }
+.tf.active{ background:#122036; border-color:#2f4b77; color:#d9e6ff }
+
+.zoom{
+  display:flex; align-items:center; gap:6px
+}
+.zoom .tf{ width:36px; text-align:center; padding:6px 0 }
+.zoom .reset{
+  color:#9fb7ff; border-color:#29406b
+}
+
+/* ===== Gráfico ===== */
+#chart{
+  width:100%; height:260px; display:block; background:#0d0f16;
+  border:1px solid var(--line); border-radius:12px; cursor:crosshair
+}
 .caption{ color:var(--muted); font-size:12px }
+
+/* ===== Painéis da direita ===== */
 .panel{ border:1px solid var(--line); border-radius:12px; padding:12px; background:#10131a }
 .panel h3{ margin:.3rem 0 .6rem }
 .news-item{ padding:10px; border-bottom:1px dashed #1e2535 }
 .news-item:last-child{ border-bottom:none }
+
 .muted{ color:var(--muted) } .small{ font-size:12px }
+
+/* ===== Tabela de posições ===== */
 .pos-table{ width:100%; border-collapse:collapse; font-size:14px }
 .pos-table th,.pos-table td{ padding:8px; border-bottom:1px solid var(--line); text-align:left }
+
+/* ===== Rodapé ===== */
 .footer{ color:var(--muted); text-align:center; padding:12px }
+
+/* ===== Modal ===== */
 .modal{ position:fixed; inset:0; display:none; background:rgba(0,0,0,.55); align-items:center; justify-content:center; z-index:50 }
 .modal.open{ display:flex }
 .sheet{ width:min(520px,92vw); background:#12141b; border:1px solid var(--line); border-radius:14px; padding:16px }
@@ -52,4 +122,10 @@ h1{ font-size:22px; margin:0 }
 .sheet input,.sheet select{ padding:10px 12px; border:1px solid #263044; border-radius:9px; background:#0e1119; color:#e8edf7 }
 .sheet .x{ background:#151a26; border:1px solid #263044; color:#9bb3d7; border-radius:8px; padding:6px 10px; cursor:pointer }
 .end{ display:flex; gap:10px; justify-content:flex-end; margin-top:8px }
-@media (max-width:1024px){ .layout{ grid-template-columns:1fr; grid-template-rows:auto auto auto } #chart{ height:220px } }
+
+/* ===== Responsivo ===== */
+@media (max-width:1024px){
+  .layout{ grid-template-columns:1fr; grid-template-rows:auto auto auto }
+  #chart{ height:220px }
+  .tfbar .group{ width:100%; justify-content:flex-start; flex-wrap:wrap }
+}
