@@ -135,7 +135,9 @@
     var divisions = 4;
     var step = Math.max(1, Math.floor((sliceTimes.length-1)/divisions));
     ctx.font = "12px Inter, ui-sans-serif";
-    ctx.fillStyle = "#94a0b8"; // muted
+    ctx.fillStyle = "#b4bed2"; // muted
+    ctx.lineJoin = "round";
+    ctx.lineCap  = "round";
     ctx.strokeStyle = "#1e2330"; // line
     ctx.lineWidth = 1;
 
