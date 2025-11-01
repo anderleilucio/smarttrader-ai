@@ -76,93 +76,97 @@
   });
 
   // ===== Canvas (gráfico responsivo) =====
-var canvas = $("chart"), ctx = canvas.getContext("2d");
+  var canvas = $("chart"), ctx = canvas.getContext("2d");
 
-function resizeCanvas() {
-  // Usa o tamanho real no layout (CSS) para configurar o buffer interno
-  var rect = canvas.getBoundingClientRect();
-  var cssW = Math.max(1, Math.floor(rect.width || canvas.clientWidth || 600));
-  var cssH = Math.max(1, Math.floor(rect.height || 260));
-  var dpr  = (window.devicePixelRatio || 1);
+  function resizeCanvas() {
+    var rect = canvas.getBoundingClientRect();
+    var cssW = Math.max(1, Math.floor(rect.width || canvas.clientWidth || 600));
+    var cssH = Math.max(1, Math.floor(rect.height || 260));
+    var dpr  = (window.devicePixelRatio || 1);
 
-  // configura o buffer interno do canvas
-  canvas.width  = cssW * dpr;
-  canvas.height = cssH * dpr;
+    canvas.width  = cssW * dpr;
+    canvas.height = cssH * dpr;
 
-  // reseta e aplica escala. Depois do scale, desenhamos em "pixels CSS".
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.scale(dpr, dpr);
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.scale(dpr, dpr);
 
-  // guarda tamanhos CSS pra usar no desenho
-  canvas._cssW = cssW;
-  canvas._cssH = cssH;
-}
-window.addEventListener("resize", function () { resizeCanvas(); drawChart(state.active); });
-resizeCanvas();
+    canvas._cssW = cssW;
+    canvas._cssH = cssH;
+  }
+  window.addEventListener("resize", function () { resizeCanvas(); drawChart(state.active); });
+  resizeCanvas();
 
-function drawChart(sym) {
-  var d = state.data[sym] || { series: [] };
+  function drawChart(sym) {
+    var d = state.data[sym] || { series: [] };
+    var W = canvas._cssW || 600;
+    var H = canvas._cssH || 260;
 
-  // use sempre os tamanhos CSS salvos no resize
-  var W = canvas._cssW || 600;
-  var H = canvas._cssH || 260;
+    ctx.clearRect(0, 0, W, H);
 
-  ctx.clearRect(0, 0, W, H);
+    var series = d.series || [];
+    if (!series.length) return;
 
-  var series = d.series || [];
-  if (!series.length) return; // ainda sem dados, não desenha
+    var min = Math.min.apply(null, series);
+    var max = Math.max.apply(null, series);
+    if (!isFinite(min) || !isFinite(max) || min === max) {
+      min = (d.px || 0) - 1;
+      max = (d.px || 0) + 1;
+    }
 
-  var min = Math.min.apply(null, series);
-  var max = Math.max.apply(null, series);
-  if (!isFinite(min) || !isFinite(max) || min === max) {
-    min = (d.px || 0) - 1;
-    max = (d.px || 0) + 1;
+    var xstep = W / Math.max(1, series.length - 1);
+    ctx.beginPath();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#00ffa3";
+    series.forEach(function (v, i) {
+      var x = i * xstep;
+      var y = H - ((v - min) / (max - min + 1e-9)) * (H - 10) - 5;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
   }
 
-  var xstep = W / Math.max(1, series.length - 1);
-  ctx.beginPath();
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = "#00ffa3";
-  series.forEach(function (v, i) {
-    var x = i * xstep;
-    var y = H - ((v - min) / (max - min + 1e-9)) * (H - 10) - 5;
-    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-  });
-  ctx.stroke();
-}
+  // ===== Semeia série com 2 pontos (linha visível já no 1º tick) =====
+  function seedSeries(sym, px){
+    var d = state.data[sym];
+    if(!d.series || d.series.length === 0){
+      d.series = [px, px]; // 2 pontos idênticos => linha visível
+    } else if(d.series.length === 1){
+      d.series.push(d.series[0]); // garante >=2
+    }
+  }
 
   // ===== Quote remoto (com anti-cache) =====
   async function fetchQuote(sym){
     try{
       var r = await fetch('/api/quote?symbol='+encodeURIComponent(sym)+'&_='+Date.now(), { cache:'no-store' });
       var j = await r.json();
-      var px  = (j && j.px  != null) ? j.px  : null;
-      var chg = (j && j.chg != null) ? j.chg : 0;
+      var px  = (j && j.px  != null) ? Number(j.px)  : null;
+      var chg = (j && j.chg != null) ? Number(j.chg) : 0;
 
       if(!state.data[sym]) state.data[sym] = { px:null, chg:0, series:[] };
-      if(px != null){
+      if(px != null && isFinite(px)){
         var slot = state.data[sym];
         slot.px  = px;
-        slot.chg = chg;
+        slot.chg = (isFinite(chg) ? chg : slot.chg);
+
+        seedSeries(sym, px);              // <<<<<<<<<<<<<< chave para aparecer
         var s = slot.series;
         s.push(px);
         if(s.length > HISTORY_LEN) s.shift();
       }
     }catch(e){
-      // silencioso para não travar a UI
+      // silencioso
     }
   }
 
   // ===== Atualização periódica =====
   var ticking = false;
   async function periodic(){
-    if(ticking) return; // evita sobreposição
+    if(ticking) return;
     ticking = true;
 
-    // 1) ativo atual primeiro
     await fetchQuote(state.active);
 
-    // 2) outros símbolos (espalha requests para não estourar quota)
     var others = Object.keys(state.data).filter(function(s){ return s !== state.active; });
     for(var i=0;i<others.length;i++){
       await fetchQuote(others[i]);
@@ -171,17 +175,17 @@ function drawChart(sym) {
 
     refresh(false);
     checkAlerts();
-
     ticking = false;
   }
 
   setInterval(periodic, REFRESH_MS);
+
   // primeira carga imediata
   (async function boot(){
-    // força pelo menos uma amostra para o ativo atual, garantindo gráfico
-    await fetchQuote(state.active);
-    refresh(true);
-    periodic();
+    await fetchQuote(state.active); // 1º ponto
+    resizeCanvas();                 // garante buffer correto
+    refresh(true);                  // já desenha
+    periodic();                     // inicia loop
   })();
 
   // ===== UI refresh =====
@@ -196,10 +200,8 @@ function drawChart(sym) {
     chgEl.textContent = fmtPct(d.chg||0);
     chgEl.className = "chg " + ((d.chg||0)>=0 ? "up" : "down");
 
-    // Redesenha o gráfico
     if(forceDraw) resizeCanvas();
     drawChart(sym);
-
     drawPositions();
   }
 
