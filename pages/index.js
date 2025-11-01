@@ -24,23 +24,25 @@ export default function Home() {
           <div id="list" className="list"></div>
         </div>
 
-        <div className="center">
-          <div className="title-row">
-            <h1 id="sym">TSLA</h1>
-            <div id="chg" className="pill">+0.00%</div>
-          </div>
+      <div className="center">
+  <div className="title-row">
+    <h1 id="sym">TSLA</h1>
+    <div id="chg" className="pill">+0.00%</div>
+  </div>
 
-          <div className="row">
-            <div className="price" id="price">$ —</div>
-            <button id="buyBtn"  className="btn">Comprar</button>
-            <button id="sellBtn" className="btn sell">Vender</button>
-            <button id="alertBtn" className="btn alert">Criar alerta</button>
-          </div>
+  <div className="row">
+    <div className="price" id="price">$ —</div>
+    <button id="buyBtn"  className="btn">Comprar</button>
+    <button id="sellBtn" className="btn sell">Vender</button>
+    <button id="alertBtn" className="btn alert">Criar alerta</button>
+  </div>
 
-          <canvas id="chart"></canvas>
-          <div className="caption">Atualização automática a cada 6 s</div>
-        </div>
+  {/* 🔽 NOVO: container que o JS vai preencher com timeframes e zoom */}
+  <div id="controls" className="row" aria-label="Timeframes e zoom"></div>
 
+  <canvas id="chart"></canvas>
+  <div className="caption">Atualização automática a cada 6 s</div>
+</div>
         <div className="right">
           <div className="panel">
             <h3>Alertas & Notícias</h3>
