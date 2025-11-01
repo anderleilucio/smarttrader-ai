@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>SmartTrader AI — Radar de Mercado Inteligente</title>
   <meta name="description" content="SmartTrader AI — painel de monitoramento de ações com IA e alertas em tempo quase real (protótipo).">
-  <link rel="icon" href="assets/logo.svg">
-  <link rel="stylesheet" href="assets/styles.css">
+  <link rel="icon" href="/assets/logo.svg">
+  <link rel="stylesheet" href="/assets/styles.css">
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
-      <img src="assets/logo.svg" alt="SmartTrader AI" width="22" height="22">
+      <img src="/assets/logo.svg" alt="SmartTrader AI" width="22" height="22">
       <span>SmartTrader AI</span>
     </div>
     <div class="clock" id="clock">UTC — --:--:--</div>
@@ -28,27 +28,41 @@
         <div style="flex:1">
           <div class="title-row">
             <h1 id="sym">TSLA</h1>
-            <div class="timeframes">
-              <button class="pill active" data-tf="1m">1m</button>
-              <button class="pill" data-tf="5m">5m</button>
-              <button class="pill" data-tf="1h">1h</button>
-              <button class="pill" data-tf="1d">1d</button>
+            <!-- Barra de zoom & timeframes (usada pelo app.js) -->
+            <div id="tfbar" class="row" style="gap:8px; flex-wrap:wrap">
+              <button id="zoomOut"  class="btn" title="Zoom out">−</button>
+              <button id="resetZoom" class="btn" title="Resetar zoom">Reset</button>
+              <button id="zoomIn"   class="btn" title="Zoom in">+</button>
+
+              <span class="pill">Timeframe</span>
+              <button class="btn tf" data-tf="1m">1m</button>
+              <button class="btn tf" data-tf="1h">1h</button>
+              <button class="btn tf" data-tf="5h">5h</button>
+              <button class="btn tf" data-tf="12h">12h</button>
+              <button class="btn tf" data-tf="24h">24h</button>
+              <button class="btn tf" data-tf="1w">1w</button>
+              <button class="btn tf" data-tf="1mo">1m</button>
+              <button class="btn tf" data-tf="2mo">2m</button>
+              <button class="btn tf" data-tf="3mo">3m</button>
+              <button class="btn tf" data-tf="ytd">YTD</button>
             </div>
           </div>
+
           <div class="row">
             <div class="price" id="price">$ —</div>
-            <div id="chg" class="chg">—</div>
+            <div id="chg" class="pill">—</div>
           </div>
         </div>
+
         <div class="row buttons">
-          <button class="btn buy" id="buyBtn">Comprar</button>
+          <button class="btn" id="buyBtn">Comprar</button>
           <button class="btn sell" id="sellBtn">Vender</button>
           <button class="btn alert" id="alertBtn">Criar alerta</button>
         </div>
       </div>
 
       <canvas id="chart" height="260"></canvas>
-      <p class="caption">Protótipo local com dados simulados. Para conectar dados reais, ajuste <code>assets/app.js</code> com o feed (Polygon/Alpaca/Finnhub).</p>
+      <p class="caption">Atualização automática a cada 6 s.</p>
     </section>
 
     <aside class="right">
@@ -76,7 +90,7 @@
 
   <footer class="footer">© 2025 SmartTrader AI — página estática de demonstração</footer>
 
-  <!-- Modais -->
+  <!-- Modal de ordem -->
   <div class="modal" id="orderModal" aria-hidden="true">
     <div class="sheet" role="dialog" aria-modal="true">
       <div class="sheet-head">
@@ -102,11 +116,12 @@
       </div>
       <div class="end">
         <button class="pill" id="cancelOrder">Cancelar</button>
-        <button class="btn buy" id="confirmOrder">Confirmar</button>
+        <button class="btn" id="confirmOrder">Confirmar</button>
       </div>
     </div>
   </div>
 
+  <!-- Modal de alerta -->
   <div class="modal" id="alertModal" aria-hidden="true">
     <div class="sheet" role="dialog" aria-modal="true">
       <div class="sheet-head">
@@ -136,6 +151,6 @@
     </div>
   </div>
 
-  <script src="assets/app.js"></script>
+  <script src="/assets/app.js"></script>
 </body>
 </html>
