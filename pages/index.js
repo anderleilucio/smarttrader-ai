@@ -55,7 +55,7 @@ export default function Home() {
 
           {/* Rodapé do gráfico: seleção de períodos */}
           <div className="chart-footer">
-            <div id="tfbar" className="tfbar">
+            <div className="tfbar">
               <button className="tf" data-tf="1m">1m</button>
               <button className="tf" data-tf="1h">1h</button>
               <button className="tf" data-tf="5h">5h</button>
