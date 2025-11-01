@@ -1,0 +1,142 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Radar Lucio — Monitor em Tempo Real (Protótipo)</title>
+  <meta name="description" content="Radar Lucio — painel de monitoramento de ações e alertas em tempo quase real (protótipo).">
+  <link rel="icon" href="assets/logo.svg">
+  <link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="assets/logo.svg" alt="Radar Lucio" width="22" height="22">
+      <span>Radar Lucio</span>
+    </div>
+    <div class="clock" id="clock">UTC — --:--:--</div>
+  </header>
+
+  <main class="layout">
+    <aside class="left">
+      <input id="q" placeholder="Buscar (ex.: TSLA, AAPL, VALE3)" class="search" />
+      <div id="list" class="list"></div>
+    </aside>
+
+    <section class="center">
+      <div class="row">
+        <div style="flex:1">
+          <div class="title-row">
+            <h1 id="sym">TSLA</h1>
+            <div class="timeframes">
+              <button class="pill active" data-tf="1m">1m</button>
+              <button class="pill" data-tf="5m">5m</button>
+              <button class="pill" data-tf="1h">1h</button>
+              <button class="pill" data-tf="1d">1d</button>
+            </div>
+          </div>
+          <div class="row">
+            <div class="price" id="price">$ —</div>
+            <div id="chg" class="chg">—</div>
+          </div>
+        </div>
+        <div class="row buttons">
+          <button class="btn buy" id="buyBtn">Comprar</button>
+          <button class="btn sell" id="sellBtn">Vender</button>
+          <button class="btn alert" id="alertBtn">Criar alerta</button>
+        </div>
+      </div>
+
+      <canvas id="chart" height="260"></canvas>
+      <p class="caption">Protótipo local com dados simulados. Para conectar dados reais, ajuste <code>assets/app.js</code> com o feed (Polygon/Alpaca/Finnhub).</p>
+    </section>
+
+    <aside class="right">
+      <section class="panel">
+        <h3>Alertas & Notícias</h3>
+        <div id="news" class="news">
+          <div class="news-item">
+            <div><strong>Bem-vindo</strong> ao Radar Lucio (protótipo).</div>
+            <div class="muted small">Crie um alerta para ver como aparece aqui.</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h3>Posições (paper)</h3>
+        <table class="pos-table" id="pos">
+          <thead>
+            <tr><th>Símbolo</th><th>Qtde</th><th>PM</th><th>P/L</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
+    </aside>
+  </main>
+
+  <footer class="footer">© 2025 Radar Lucio — página estática de demonstração</footer>
+
+  <!-- Modais -->
+  <div class="modal" id="orderModal" aria-hidden="true">
+    <div class="sheet" role="dialog" aria-modal="true">
+      <div class="sheet-head">
+        <h3 id="orderTitle">Comprar</h3>
+        <button class="x" id="closeOrder" aria-label="Fechar">✕</button>
+      </div>
+      <div class="grid2">
+        <label>Símbolo
+          <input id="mSym" value="TSLA">
+        </label>
+        <label>Tipo
+          <select id="mSide">
+            <option value="buy">Compra</option>
+            <option value="sell">Venda</option>
+          </select>
+        </label>
+        <label>Quantidade
+          <input id="mQty" type="number" value="10" min="1">
+        </label>
+        <label>Preço (market simulado)
+          <input id="mPx" type="number" step="0.01" value="0" disabled>
+        </label>
+      </div>
+      <div class="end">
+        <button class="pill" id="cancelOrder">Cancelar</button>
+        <button class="btn buy" id="confirmOrder">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="alertModal" aria-hidden="true">
+    <div class="sheet" role="dialog" aria-modal="true">
+      <div class="sheet-head">
+        <h3>Criar alerta</h3>
+        <button class="x" id="closeAlert" aria-label="Fechar">✕</button>
+      </div>
+      <div class="grid2">
+        <label>Símbolo
+          <input id="aSym" value="TSLA">
+        </label>
+        <label>Condição
+          <select id="aCond">
+            <option value="above">Preço acima de</option>
+            <option value="below">Preço abaixo de</option>
+            <option value="changeUp">% mudança ≥</option>
+            <option value="changeDown">% mudança ≤</option>
+          </select>
+        </label>
+        <label>Valor
+          <input id="aVal" type="number" step="0.01" value="500">
+        </label>
+      </div>
+      <div class="end">
+        <button class="pill" id="cancelAlert">Cancelar</button>
+        <button class="btn alert" id="confirmAlert">Salvar alerta</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="assets/app.js"></script>
+</body>
+</html>
