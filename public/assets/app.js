@@ -2,38 +2,58 @@
 (function () {
   "use strict";
 
+  // ===== Config =====
   var REFRESH_MS  = 6000;
-  var HISTORY_LEN = 1200; // aguenta 1 dia em 1m e 1 semana em 5m
+  var HISTORY_LEN = 1200; // suporta 1D em 1m e 1W em 5m com folga
   var DEFAULTS    = ["TSLA","NVDA","AAPL","AMZN","MSFT","ITUB4","VALE3","PETR4"];
-  var TF_POINTS   = { "1D": 300, "1W": 300, "1M": 300, "3M": 300, "1Y": 300, "5Y": 300, "MAX": 300 };
-  var DEFAULT_TF  = "1D";
 
+  // Mesmos rótulos do Robinhood
+  var TF_POINTS = { "1D": 300, "1W": 300, "1M": 300, "3M": 300, "1Y": 300, "5Y": 300, "MAX": 300 };
+  var DEFAULT_TF = "1D";
+
+  // ===== Estado =====
   var state = {
-    active:"TSLA", data:{}, positions:{}, alerts:[],
-    viewN: TF_POINTS[DEFAULT_TF], offset:0, pan:null, tf:DEFAULT_TF, hover:null
+    active: "TSLA",
+    data: {},           // data[SYM] = { px, chg, series:number[], times:number[] }
+    positions: {},
+    alerts: [],
+    viewN: TF_POINTS[DEFAULT_TF],
+    offset: 0,
+    pan: null,
+    tf: DEFAULT_TF,
+    hover: null        // {x, idx} para tooltip/crosshair
   };
 
+  // ===== Helpers =====
   function $(id){ return document.getElementById(id); }
   function on(el, ev, fn, opts){ if(el) el.addEventListener(ev, fn, opts||false); }
-  function onClick(id, fn){ var el=$(id); if(el) el.onclick=fn; }
-  function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
+  function onClick(id, fn){ var el=$(id); if(el) el.onclick = fn; }
+  function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
   function fmtPct(v){ return (v>=0?"+":"") + ((v||0)*100).toFixed(2) + "%"; }
   function isBR(sym){ return /\d$/.test(sym); }
   function moneyOf(sym, v){
     var fmt = isBR(sym)
       ? new Intl.NumberFormat("pt-BR", { style:"currency", currency:"BRL" })
       : new Intl.NumberFormat("en-US",  { style:"currency", currency:"USD" });
-    var s = fmt.format(Math.abs(v||0)); return (v<0?"-":"")+s.replace("-","");
+    var s = fmt.format(Math.abs(v||0));
+    return (v<0?"-":"") + s.replace("-", "");
   }
   function fmtClock(d){
-    return String(d.getUTCHours()).padStart(2,"0")+":"+String(d.getUTCMinutes()).padStart(2,"0")+"Z";
+    var hh = String(d.getUTCHours()).padStart(2,"0");
+    var mm = String(d.getUTCMinutes()).padStart(2,"0");
+    return hh+":"+mm+"Z";
   }
 
-  function tickClock(){ var c=$("clock"); if(c) c.textContent="UTC — "+new Date().toISOString().slice(11,19)+"Z"; }
+  // relógio do topo
+  function tickClock(){ var c=$("clock"); if(c) c.textContent = "UTC — " + new Date().toISOString().slice(11,19) + "Z"; }
   tickClock(); setInterval(tickClock, 1000);
 
-  DEFAULTS.forEach(function(s){ state.data[s] = { px:null, chg:0, series:[], times:[] }; });
+  // sementes
+  DEFAULTS.forEach(function(s){
+    state.data[s] = { px:null, chg:0, series:[], times:[] };
+  });
 
+  // ===== Lista com preço e % =====
   var list = $("list");
   function drawList(q){
     if(!list) return;
@@ -51,7 +71,12 @@
           '<div><strong>'+sym+'</strong>'+flag+'</div>'+
           '<div class="px">'+pxTxt+'</div>'+
           '<div class="pct '+((d.chg||0)>=0?'up':'down')+'">'+fmtPct(d.chg||0)+'</div>';
-        row.onclick = function () { state.active = sym; state.offset = 0; drawList($("q")?.value); setTimeframe(state.tf); };
+        row.onclick = function () {
+          state.active = sym;
+          state.offset = 0;
+          drawList($("q")?.value);
+          setTimeframe(state.tf);
+        };
         list.appendChild(row);
       });
   }
@@ -70,7 +95,9 @@
     });
   }
 
+  // ===== Canvas / gráfico =====
   var canvas = $("chart"), ctx = canvas ? canvas.getContext("2d") : null;
+
   function resizeCanvas() {
     if(!canvas || !ctx) return;
     var rect = canvas.getBoundingClientRect();
@@ -178,35 +205,54 @@
     }
   }
 
+  // ===== Dados =====
+
   async function loadSeries(sym, tf, force) {
     try{
       var r = await fetch('/api/series?symbol='+encodeURIComponent(sym)+'&tf='+encodeURIComponent(tf)+'&_='+Date.now(), { cache:'no-store' });
       var j = await r.json(); // { t:[], c:[] }
       if (Array.isArray(j?.t) && Array.isArray(j?.c) && j.t.length && j.c.length){
         var ds = state.data[sym] || (state.data[sym]={px:null, chg:0, series:[], times:[]});
-        ds.series = j.c.slice(-HISTORY_LEN);
-        ds.times  = j.t.slice(-HISTORY_LEN).map(x => (x<1e12 ? x*1000 : x));
 
-        // ancora no último preço atual
+        // (2.1) Conversão robusta
+        ds.series = j.c.slice(-HISTORY_LEN).map(Number);
+        ds.times  = j.t.slice(-HISTORY_LEN).map(function(x){
+          var n = Number(x);
+          return n < 1e12 ? n * 1000 : n; // segundos -> ms
+        });
+
+        // (2.2) Ancorar no último preço atual
         try{
           var qr = await fetch('/api/quote?symbol='+encodeURIComponent(sym)+'&_='+Date.now(), { cache:'no-store' });
           var qj = await qr.json();
           if (qj && qj.px != null){
             ds.px  = Number(qj.px);
-            ds.chg = Number(qj.chg||0);
+            ds.chg = Number(qj.chg || 0);
             var now = Date.now();
-            if (ds.times.length){
-              ds.series[ds.series.length-1] = ds.px;
-              ds.times [ds.times.length -1] = now;
+
+            if (ds.times.length) {
+              var lastIdx = ds.times.length - 1;
+              if (now - ds.times[lastIdx] > 90_000) {
+                ds.series.push(ds.px);
+                ds.times.push(now);
+                while (ds.series.length > HISTORY_LEN) ds.series.shift();
+                while (ds.times.length  > HISTORY_LEN) ds.times.shift();
+              } else {
+                ds.series[lastIdx] = ds.px;
+                ds.times [lastIdx] = now;
+              }
+            } else {
+              ds.series = [ds.px];
+              ds.times  = [now];
             }
           }
-        }catch{}
+        }catch{/* silencioso */}
 
         state.viewN = TF_POINTS[tf] || state.viewN;
         state.offset = 0;
         if (force) refresh(true); else drawChart(sym);
       }
-    }catch{}
+    }catch{/* silencioso */}
   }
 
   async function fetchQuote(sym){
@@ -224,30 +270,32 @@
           while (ds.times.length >HISTORY_LEN) ds.times.shift();
         }
       }
-    }catch{}
+    }catch{/* silencioso */}
   }
 
+  // loop periódico
   var ticking=false;
   async function periodic(){
     if(ticking) return; ticking=true;
 
     await fetchQuote(state.active);
-    var others = Object.keys(state.data).filter(s => s !== state.active);
+    var others = Object.keys(state.data).filter(function(s){ return s !== state.active; });
     for (var i=0;i<others.length;i++){ await fetchQuote(others[i]); }
 
-    drawList($("q")?.value);
-    refresh(false);
+    refresh(false);             // redesenha e destaca TF
+    drawList($("q")?.value);    // atualiza preços da lista
 
     ticking=false;
   }
-  setInterval(periodic, REFRESH_MS);
 
+  setInterval(periodic, REFRESH_MS);
   (async function boot(){
     drawList("");
     await loadSeries(state.active, state.tf, true);
     await periodic();
   })();
 
+  // ===== UI principal =====
   function refresh(forceDraw){
     var sym = state.active;
     var d = state.data[sym] || { px:null, chg:0, series:[] };
@@ -255,10 +303,14 @@
     if(symEl)   symEl.textContent = sym;
     if(priceEl) priceEl.textContent = (d.px==null) ? (isBR(sym) ? "R$ —" : "$ —") : moneyOf(sym, d.px);
     if(chgEl){ chgEl.textContent = fmtPct(d.chg||0); chgEl.className = "pill " + ((d.chg||0)>=0 ? "up" : "down"); }
+
     if(forceDraw) resizeCanvas();
     drawChart(sym);
+    highlightTF();              // (2.3) manter botão ativo pintado
+    drawList($("q")?.value);    // manter lista sincronizada
   }
 
+  // ===== Timeframes =====
   function setTimeframe(tf){
     state.tf = tf;
     state.viewN = TF_POINTS[tf] || 300;
@@ -275,10 +327,7 @@
     });
   }
 
-  onClick("zoomIn",  function(){ /* opcional */ });
-  onClick("zoomOut", function(){ /* opcional */ });
-  onClick("resetZoom", function(){ state.viewN = TF_POINTS[state.tf] || 300; state.offset = 0; drawChart(state.active); highlightTF(); });
-
+  // ===== Interações do canvas (tooltip) =====
   if (canvas){
     on(canvas, "wheel", function(e){ e.preventDefault(); /* zoom opcional */ }, { passive:false });
     on(canvas, "mousemove", function(e){
@@ -295,11 +344,19 @@
     on(canvas, "mouseleave", function(){ state.hover=null; drawChart(state.active); });
   }
 
-  // binds dos botões de TF do rodapé
+  // ===== Botões do TF (rodapé) =====
   var tfbar = $("tfbar");
   if (tfbar){
     tfbar.querySelectorAll(".tf[data-tf]").forEach(function(btn){
       on(btn, "click", function(){ var tf = btn.getAttribute("data-tf"); if(tf) setTimeframe(tf); });
     });
   }
+
+  // (Se tiver botões de zoom/reset, pode ligar aqui)
+  onClick("resetZoom", function(){
+    state.viewN = TF_POINTS[state.tf] || 300;
+    state.offset = 0;
+    drawChart(state.active);
+    highlightTF();
+  });
 })();
