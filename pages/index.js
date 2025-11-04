@@ -76,52 +76,54 @@ export default function Home() {
             role="img"
           ></canvas>
 
-          {/* Rodapé do gráfico: timeframes + zoom (+ / −) */}
+          {/* Rodapé do gráfico: timeframes + zoom */}
           <div className="chart-footer">
+            {/* Timeframes estilo Robinhood */}
             <div className="tfbar">
-              {/* linha de timeframes */}
-              <div className="tf-row">
-                <button className="tf" data-tf="1m">
-                  1m
-                </button>
-                <button className="tf" data-tf="1h">
-                  1h
-                </button>
-                <button className="tf" data-tf="5h">
-                  5h
-                </button>
-                <button className="tf" data-tf="12h">
-                  12h
-                </button>
-                <button className="tf" data-tf="24h">
-                  1D
-                </button>
-                <button className="tf" data-tf="1w">
-                  1S
-                </button>
-                <button className="tf" data-tf="1mo">
-                  1M
-                </button>
-                <button className="tf" data-tf="2mo">
-                  2M
-                </button>
-                <button className="tf" data-tf="3mo">
-                  3M
-                </button>
-                <button className="tf" data-tf="ytd">
-                  YTD
-                </button>
-              </div>
+              <button className="tf" data-tf="1D">
+                1D
+              </button>
+              <button className="tf" data-tf="1W">
+                1W
+              </button>
+              <button className="tf" data-tf="1M">
+                1M
+              </button>
+              <button className="tf" data-tf="3M">
+                3M
+              </button>
+              <button className="tf" data-tf="1Y">
+                1Y
+              </button>
+              <button className="tf" data-tf="5Y">
+                5Y
+              </button>
+              <button className="tf" data-tf="YTD">
+                YTD
+              </button>
+              <button className="tf" data-tf="MAX">
+                MAX
+              </button>
+            </div>
 
-              {/* linha do zoom (+ / −) */}
-              <div className="zoom-row">
-                <button id="zoomOutBtn" className="tf" type="button">
-                  −
-                </button>
-                <button id="zoomInBtn" className="tf" type="button">
-                  +
-                </button>
-              </div>
+            {/* Botões de zoom (+ / −) separados da barra de TF */}
+            <div className="zoom-controls">
+              <button
+                className="zoom-btn"
+                id="zoomOut"
+                type="button"
+                aria-label="Dar zoom out"
+              >
+                −
+              </button>
+              <button
+                className="zoom-btn"
+                id="zoomIn"
+                type="button"
+                aria-label="Dar zoom in"
+              >
+                +
+              </button>
             </div>
           </div>
 
@@ -165,7 +167,7 @@ export default function Home() {
         © 2025 SmartTrader AI — página estática de demonstração
       </footer>
 
-      {/* JS principal (já com zoom, TF, tooltip, etc.) */}
+      {/* carrega JS depois que a página estiver interativa */}
       <Script src="/assets/app.js?v=3" strategy="afterInteractive" />
     </>
   );
