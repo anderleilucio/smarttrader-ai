@@ -79,56 +79,29 @@ export default function Home() {
           {/* Rodapé do gráfico: seleção de períodos + zoom */}
           <div className="chart-footer">
             <div className="tfbar">
-              <button className="tf" data-tf="1m">
-                1m
-              </button>
-              <button className="tf" data-tf="1h">
-                1h
-              </button>
-              <button className="tf" data-tf="5h">
-                5h
-              </button>
-              <button className="tf" data-tf="12h">
-                12h
-              </button>
-              <button className="tf" data-tf="24h">
-                1D
-              </button>
-              <button className="tf" data-tf="1w">
-                1W
-              </button>
-              <button className="tf" data-tf="1mo">
-                1M
-              </button>
-              <button className="tf" data-tf="2mo">
-                2M
-              </button>
-              <button className="tf" data-tf="3mo">
-                3M
-              </button>
-              <button className="tf" data-tf="ytd">
-                YTD
-              </button>
-            </div>
+              {/* Timeframes (tokens da API) */}
+              <div className="tf-group">
+                <button className="tf" data-tf="1m">1m</button>
+                <button className="tf" data-tf="1h">1h</button>
+                <button className="tf" data-tf="5h">5h</button>
+                <button className="tf" data-tf="12h">12h</button>
+                <button className="tf" data-tf="24h">1D</button>
+                <button className="tf" data-tf="1w">1S</button>
+                <button className="tf" data-tf="1mo">1M</button>
+                <button className="tf" data-tf="2mo">2M</button>
+                <button className="tf" data-tf="3mo">3M</button>
+                <button className="tf" data-tf="ytd">YTD</button>
+              </div>
 
-            {/* Toggle de zoom no cantinho: (- / +) */}
-            <div className="zoom-toggle">
-              <button
-                id="zoomOut"
-                type="button"
-                className="tf zoom-btn"
-                aria-label="Zoom out"
-              >
-                −
-              </button>
-              <button
-                id="zoomIn"
-                type="button"
-                className="tf zoom-btn"
-                aria-label="Zoom in"
-              >
-                +
-              </button>
+              {/* Zoom in / out (apenas acrescentado) */}
+              <div className="zoom-group">
+                <button id="zoomOutBtn" className="tf" type="button">
+                  −
+                </button>
+                <button id="zoomInBtn" className="tf" type="button">
+                  +
+                </button>
+              </div>
             </div>
           </div>
 
@@ -172,7 +145,7 @@ export default function Home() {
         © 2025 SmartTrader AI — página estática de demonstração
       </footer>
 
-      {/* JS principal */}
+      {/* carrega JS depois que a página estiver interativa */}
       <Script src="/assets/app.js?v=3" strategy="afterInteractive" />
     </>
   );
