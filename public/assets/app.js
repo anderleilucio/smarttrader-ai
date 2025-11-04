@@ -1,4 +1,4 @@
-/* public/assets/app.js — SmartTrader AI (Robinhood-like TFs + fallbacks + zoom) */
+/* public/assets/app.js — SmartTrader AI (Robinhood-like TFs + fallbacks + zoom, FIX) */
 (function () {
   "use strict";
 
@@ -10,9 +10,11 @@
   // Pontos por janela (para zoom inicial de cada TF)
   var TF_POINTS = {
     // Robinhood-like (rótulos da UI)
-    "1D": 300, "1W": 300, "1M": 300, "2M": 300, "3M": 300, "1Y": 300, "5Y": 300, "YTD": 300, "MAX": 300,
+    "1D": 300, "1W": 300, "1M": 300, "2M": 300, "3M": 300,
+    "1Y": 300, "5Y": 300, "YTD": 300, "MAX": 300,
     // Tokens API (fallback)
-    "1m": 120, "1h": 300, "5h": 300, "12h": 300, "24h": 300, "1w": 300, "1mo": 300, "2mo": 300, "3mo": 300, "ytd": 300
+    "1m": 120, "1h": 300, "5h": 300, "12h": 300, "24h": 300,
+    "1w": 300, "1mo": 300, "2mo": 300, "3mo": 300, "ytd": 300
   };
 
   var DEFAULT_TF_LABEL = "1D";   // o que aparece nos botões
@@ -68,7 +70,7 @@
     if (U === "2M") return "2mo";
     if (U === "3M") return "3mo";
     if (U === "YTD") return "ytd";
-    if (U === "1Y") return "ytd"; // simplificado; se criar 1y no backend, troca aqui
+    if (U === "1Y") return "ytd"; // simplificado
     if (U === "5Y") return "ytd";
     if (U === "MAX") return "ytd";
     // já é token da API?
@@ -247,7 +249,8 @@
       var pad=6, tw=ctx.measureText(txt).width;
       var bx = clamp(hvx - tw/2 - pad, 0, W - (tw + pad*2));
       var by = 8;
-      ctx.fillStyle="#0f1420"; ctx.strokeStyle="#273b55"; ctx.lineWidth=1; ctx.beginPath(); ctx.rect(bx, by, tw+pad*2, 22); ctx.fill(); ctx.stroke();
+      ctx.fillStyle="#0f1420"; ctx.strokeStyle="#273b55"; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.rect(bx, by, tw+pad*2, 22); ctx.fill(); ctx.stroke();
       ctx.fillStyle="#dce7ff"; ctx.fillText(txt, bx+pad, by+15);
     }
   }
@@ -279,9 +282,8 @@
 
   // ===== Dados =====
 
-  // >>> fetchQuote: ATUALIZA SÓ O ÚLTIMO PONTO DA SÉRIE <<<
-  async function fetchQuote(sym, opts){
-    opts = opts || {};
+  // fetchQuote AGORA **NÃO** mexe na série, só px/chg
+  async function fetchQuote(sym){
     var ds = state.data[sym] || (state.data[sym] = {
       px:null, chg:0, series:[], times:[]
     });
@@ -297,30 +299,19 @@
         ds.chg = Number(j.chg||0);
       }
     }catch(e){
-      // fallback de emergência se nem o backend conseguiu
       if (ds.px == null){
         var base = 100 + Math.random()*200;
         ds.px = base;
         ds.chg = 0;
       }
     }
-
-    // Atualiza SOMENTE o último candle da série
-    if (ds.series && ds.series.length){
-      var now = Date.now();
-      var lastIdx = ds.series.length - 1;
-      ds.series[lastIdx] = ds.px;
-      ds.times[lastIdx]  = now;
-    } else if (ds.px != null){
-      // caso raro em que ainda não existe série
-      var now2 = Date.now();
-      ds.series = [ds.px];
-      ds.times  = [now2];
-    }
   }
 
+  // loadSeries: pega histórico + ancora UMA VEZ no preço atual
   async function loadSeries(sym, apiTf, force) {
-    var ds = state.data[sym] || (state.data[sym] = { px:null, chg:0, series:[], times:[] });
+    var ds = state.data[sym] || (state.data[sym] = {
+      px:null, chg:0, series:[], times:[]
+    });
 
     try{
       var r = await fetch(
@@ -340,10 +331,27 @@
       // se der erro, mantemos a série antiga (se existir)
     }
 
-    // ancora no último preço atual (sem adicionar ponto novo)
-    await fetchQuote(sym, { anchorOnly:true });
+    // pega preço atual
+    await fetchQuote(sym);
 
-    // se ainda assim não houver série, cria uma série fake em torno do preço atual
+    // ancora só UMA VEZ o último ponto com o px atual
+    if (ds.px != null && ds.series && ds.series.length){
+      var now = Date.now();
+      var lastIdx = ds.series.length - 1;
+      if (now - ds.times[lastIdx] > 90_000){
+        // se o último ponto é antigo, cria um ponto novo no final
+        ds.series.push(ds.px);
+        ds.times.push(now);
+        while (ds.series.length > HISTORY_LEN) ds.series.shift();
+        while (ds.times.length  > HISTORY_LEN) ds.times.shift();
+      } else {
+        // só sobrescreve o último candle
+        ds.series[lastIdx] = ds.px;
+        ds.times[lastIdx]  = now;
+      }
+    }
+
+    // se ainda assim não houver série, cria uma fake em volta do preço
     if (!ds.series || !ds.series.length){
       ensureFallbackSeries(ds);
     }
@@ -420,10 +428,8 @@
   async function periodic(){
     if(ticking) return; ticking=true;
 
-    // ativo primeiro
     await fetchQuote(state.active);
 
-    // demais símbolos
     var others = Object.keys(state.data).filter(function(s){ return s !== state.active; });
     for (var i=0;i<others.length;i++){
       await fetchQuote(others[i]);
@@ -449,7 +455,9 @@
     var d = state.data[sym] || { px:null, chg:0, series:[] };
     var symEl=$("sym"), priceEl=$("price"), chgEl=$("chg");
     if(symEl)   symEl.textContent = sym;
-    if(priceEl) priceEl.textContent = (d.px==null) ? (isBR(sym) ? "R$ —" : "$ —") : moneyOf(sym, d.px);
+    if(priceEl) priceEl.textContent = (d.px==null)
+      ? (isBR(sym) ? "R$ —" : "$ —")
+      : moneyOf(sym, d.px);
     if(chgEl){
       chgEl.textContent = fmtPct(d.chg||0);
       chgEl.className = "pill " + ((d.chg||0)>=0 ? "up" : "down");
@@ -499,7 +507,6 @@
     highlightTF();
   }
 
-  // scroll do mouse
   if (canvas){
     on(canvas, "wheel", function(e){
       e.preventDefault();
