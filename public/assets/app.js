@@ -1,4 +1,4 @@
-/* public/assets/app.js — SmartTrader AI (TF estilo Robinhood + Zoom + Pan) */
+/* public/assets/app.js — SmartTrader AI (TFs Robinhood + Zoom) */
 (function () {
   "use strict";
 
@@ -7,29 +7,20 @@
   var HISTORY_LEN = 1200; // suporta 1D em 1m e 1W em 5m com folga
   var DEFAULTS    = ["TSLA","NVDA","AAPL","AMZN","MSFT","ITUB4","VALE3","PETR4"];
 
-  // Pontos por janela
+  // Janela padrão para cada timeframe
   var TF_POINTS = {
-    // tokens API
     "1m": 120,
     "1h": 300,
     "5h": 300,
     "12h": 300,
-    "24h": 300,
+    "24h": 300, // 1D
     "1w": 300,
     "1mo": 300,
     "2mo": 300,
     "3mo": 300,
-    "ytd": 300,
-    // rótulos Robinhood (fallback)
-    "1D": 300,
-    "1W": 300,
-    "1M": 300,
-    "2M": 300,
-    "3M": 300,
-    "YTD": 300
+    "ytd": 300
   };
-  var DEFAULT_TF_LABEL = "1D";   // o que aparece nos botões
-  var DEFAULT_API_TF   = "24h";  // o que mandamos pra /api/series
+  var DEFAULT_TF = "24h";      // 1 dia
 
   // ===== Estado =====
   var state = {
@@ -37,12 +28,11 @@
     data: {},           // data[SYM] = { px, chg, series:number[], times:number[] }
     positions: {},
     alerts: [],
-    viewN: TF_POINTS[DEFAULT_TF_LABEL],
+    viewN: TF_POINTS[DEFAULT_TF],
     offset: 0,
     pan: null,
-    tf: DEFAULT_API_TF,       // token atual da API
-    tfLabel: DEFAULT_TF_LABEL,// rótulo atual (1D, 1W, ...)
-    hover: null               // {x, idx} para tooltip/crosshair
+    tf: DEFAULT_TF,
+    hover: null        // {x, idx} para tooltip/crosshair
   };
 
   // ===== Helpers =====
@@ -64,41 +54,15 @@
     return hh+":"+mm+"Z";
   }
 
-  // --- Mapas TF (rótulo -> token API) ---
-  function mapTf(labelOrToken){
-    var L = String(labelOrToken || "").trim();
-    var U = L.toUpperCase();
-    // Robinhood-like
-    if (U === "1D") return "24h";
-    if (U === "1W") return "1w";
-    if (U === "1M") return "1mo";
-    if (U === "2M") return "2mo";
-    if (U === "3M") return "3mo";
-    if (U === "YTD") return "ytd";
-    // Já é token da API?
-    var low = L.toLowerCase();
-    if (["1m","1h","5h","12h","24h","1w","1mo","2mo","3mo","ytd"].includes(low)) return low;
-    return "24h";
-  }
-  function labelFromToken(token){
-    var t = String(token||"").toLowerCase();
-    if (t==="24h") return "1D";
-    if (t==="1w")  return "1W";
-    if (t==="1mo") return "1M";
-    if (t==="2mo") return "2M";
-    if (t==="3mo") return "3M";
-    if (t==="ytd") return "YTD";
-    return t.toUpperCase();
-  }
-
-  // relógio do topo
+  // ===== Relógio topo =====
   function tickClock(){
     var c=$("clock");
     if(c) c.textContent = "UTC — " + new Date().toISOString().slice(11,19) + "Z";
   }
-  tickClock(); setInterval(tickClock, 1000);
+  tickClock();
+  setInterval(tickClock, 1000);
 
-  // sementes
+  // ===== Sementes =====
   DEFAULTS.forEach(function(s){
     state.data[s] = { px:null, chg:0, series:[], times:[] };
   });
@@ -125,7 +89,7 @@
           state.active = sym;
           state.offset = 0;
           drawList($("q")?.value);
-          setTimeframe(state.tfLabel); // mantém TF atual
+          setTimeframe(state.tf); // recarrega série do ativo
         };
         list.appendChild(row);
       });
@@ -139,7 +103,7 @@
         if(sym){
           if(!state.data[sym]) state.data[sym] = { px:null, chg:0, series:[], times:[] };
           state.active = sym; state.offset = 0;
-          e.target.blur(); drawList(sym); setTimeframe(state.tfLabel);
+          e.target.blur(); drawList(sym); setTimeframe(state.tf);
         }
       }
     });
@@ -166,7 +130,7 @@
   function getViewport(series){
     var n = series.length;
     if (n === 0) return {start:0, end:0, view:0};
-    var view = clamp(state.viewN || n, 2, n);
+    var view = clamp(state.viewN, 2, n);
     var maxOffset = Math.max(0, n - view);
     state.offset = clamp(state.offset, 0, maxOffset);
     var end   = n - 1 - state.offset;
@@ -212,9 +176,9 @@
     var ts    = times.slice (vp.start, vp.end+1);
 
     if (slice.length <= 1) {
-      var y = Math.floor((H-22)/2);
+      var y0 = Math.floor((H-22)/2);
       ctx.beginPath(); ctx.lineWidth = 2; ctx.strokeStyle = "#00ffa3";
-      ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+      ctx.moveTo(0, y0); ctx.lineTo(W, y0); ctx.stroke();
       return;
     }
 
@@ -235,6 +199,7 @@
     }
     ctx.stroke();
 
+    // tooltip / crosshair
     if (state.hover){
       var idx = clamp(state.hover.idx, 0, slice.length-1);
       var hvx = idx * xstep;
@@ -242,11 +207,8 @@
       var hvy = Hplot - ((v - min) / (max - min + 1e-9)) * (Hplot - 10) - 5;
 
       ctx.strokeStyle="#24304a"; ctx.lineWidth=1;
-      ctx.beginPath(); ctx.moveTo(Math.floor(hvx)+0.5, 0);
-      ctx.lineTo(Math.floor(hvx)+0.5, Hplot);
-      ctx.stroke();
-      ctx.fillStyle="#00ffa3";
-      ctx.beginPath(); ctx.arc(hvx, hvy, 3, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(Math.floor(hvx)+0.5, 0); ctx.lineTo(Math.floor(hvx)+0.5, Hplot); ctx.stroke();
+      ctx.fillStyle="#00ffa3"; ctx.beginPath(); ctx.arc(hvx, hvy, 3, 0, Math.PI*2); ctx.fill();
 
       var txt = moneyOf(sym, v) + "  •  " + fmtClock(new Date(ts[idx]));
       ctx.font="12px Inter, ui-sans-serif";
@@ -260,12 +222,9 @@
   }
 
   // ===== Dados =====
-  async function loadSeries(sym, apiTf, force) {
+  async function loadSeries(sym, tf, force) {
     try{
-      var r = await fetch(
-        "/api/series?symbol="+encodeURIComponent(sym)+"&tf="+encodeURIComponent(apiTf)+"&_="+Date.now(),
-        { cache:"no-store" }
-      );
+      var r = await fetch('/api/series?symbol='+encodeURIComponent(sym)+'&tf='+encodeURIComponent(tf)+'&_='+Date.now(), { cache:'no-store' });
       var j = await r.json(); // { t:[], c:[] }
       if (Array.isArray(j?.t) && Array.isArray(j?.c) && j.t.length && j.c.length){
         var ds = state.data[sym] || (state.data[sym]={px:null, chg:0, series:[], times:[]});
@@ -278,7 +237,7 @@
 
         // ancora no último preço atual
         try{
-          var qr = await fetch("/api/quote?symbol="+encodeURIComponent(sym)+"&_="+Date.now(), { cache:"no-store" });
+          var qr = await fetch('/api/quote?symbol='+encodeURIComponent(sym)+'&_='+Date.now(), { cache:'no-store' });
           var qj = await qr.json();
           if (qj && qj.px != null){
             ds.px  = Number(qj.px);
@@ -301,18 +260,18 @@
               ds.times  = [now];
             }
           }
-        }catch{/* silencioso */}
+        }catch{}
 
-        state.viewN = TF_POINTS[state.tfLabel] || TF_POINTS[apiTf] || state.viewN;
+        state.viewN = TF_POINTS[tf] || state.viewN;
         state.offset = 0;
         if (force) refresh(true); else drawChart(sym);
       }
-    }catch{/* silencioso */}
+    }catch{}
   }
 
   async function fetchQuote(sym){
     try{
-      var r = await fetch("/api/quote?symbol="+encodeURIComponent(sym)+"&_="+Date.now(), { cache:"no-store" });
+      var r = await fetch('/api/quote?symbol='+encodeURIComponent(sym)+'&_='+Date.now(), { cache:'no-store' });
       var j = await r.json();
       var ds = state.data[sym] || (state.data[sym]={px:null, chg:0, series:[], times:[]});
       if (j && j.px != null){
@@ -325,10 +284,30 @@
           while (ds.times.length >HISTORY_LEN) ds.times.shift();
         }
       }
-    }catch{/* silencioso */}
+    }catch{}
   }
 
-  // ===== Loop periódico =====
+  // ===== Zoom =====
+  function zoom(delta){
+    var v = state.viewN || TF_POINTS[state.tf] || 300;
+    if (delta > 0) {
+      // zoom in (mais detalhado)
+      v = Math.max(20, Math.floor(v * 0.8));
+    } else {
+      // zoom out (mais longo)
+      v = Math.min(HISTORY_LEN, Math.ceil(v * 1.25));
+    }
+    state.viewN = v;
+    var series = state.data[state.active]?.series || [];
+    state.offset = clamp(
+      state.offset,
+      0,
+      Math.max(0, series.length - state.viewN)
+    );
+    drawChart(state.active);
+  }
+
+  // ===== loop periódico =====
   var ticking=false;
   async function periodic(){
     if(ticking) return; ticking=true;
@@ -350,24 +329,6 @@
     await periodic();
   })();
 
-  // ===== Zoom =====
-  // fator < 1 -> aproxima (zoom in); fator > 1 -> afasta (zoom out)
-  function zoom(factor){
-    var s = state.data[state.active]?.series || [];
-    if (s.length < 2) return;
-    var v = state.viewN || s.length;
-    v = Math.round(v * factor);
-    // limites de zoom
-    v = clamp(v, 10, Math.min(HISTORY_LEN, s.length));
-    state.viewN = v;
-
-    // mantém o lado direito (dados mais recentes) sempre visível
-    var maxOffset = Math.max(0, s.length - v);
-    state.offset = clamp(state.offset, 0, maxOffset);
-
-    drawChart(state.active);
-  }
-
   // ===== UI principal =====
   function refresh(forceDraw){
     var sym = state.active;
@@ -383,88 +344,58 @@
   }
 
   // ===== Timeframes =====
-  function setTimeframe(labelOrToken){
-    var label = (labelOrToken && String(labelOrToken).trim()) || DEFAULT_TF_LABEL;
-    var apiTf = mapTf(label);
-
-    state.tf      = apiTf;
-    state.tfLabel = labelFromToken(apiTf);
-    state.viewN   = TF_POINTS[state.tfLabel] || TF_POINTS[apiTf] || 300;
-    state.offset  = 0;
-
+  function setTimeframe(tf){
+    state.tf = tf;
+    state.viewN = TF_POINTS[tf] || 300;
+    state.offset = 0;
     highlightTF();
-    loadSeries(state.active, apiTf, true);
+    loadSeries(state.active, tf, true);
   }
 
   function highlightTF(){
-    var currentLabel = state.tfLabel;
     document.querySelectorAll(".tfbar .tf").forEach(function(btn){
-      var l = (btn.getAttribute("data-tf") || btn.textContent || "").trim();
-      var isActive =
-        labelFromToken(mapTf(l)) === currentLabel && state.offset===0;
-      btn.classList.toggle("active", isActive);
+      var tf = btn.getAttribute("data-tf");
+      btn.classList.toggle("active", tf === state.tf && state.offset===0);
     });
   }
 
-  // ===== Interações do canvas (tooltip + pan + scroll zoom) =====
+  // ===== Interações do canvas =====
   if (canvas){
-    // zoom pelo scroll do mouse / trackpad
+    // zoom com scroll
     on(canvas, "wheel", function(e){
       e.preventDefault();
-      zoom(e.deltaY < 0 ? 0.85 : 1.15);  // aqui você controla a “velocidade” do zoom
+      zoom(e.deltaY < 0 ? 1 : -1);
     }, { passive:false });
 
-    // pan (arrastar)
-    on(canvas, "mousedown", function(e){
-      var rect = canvas.getBoundingClientRect();
-      state.pan = { x: e.clientX - rect.left, startOffset: state.offset };
-    });
-    on(window, "mouseup", function(){ state.pan = null; });
-    on(window, "mousemove", function(e){
+    // tooltip
+    on(canvas, "mousemove", function(e){
       var rect = canvas.getBoundingClientRect();
       var d = state.data[state.active];
-      if(d && d.series.length){
-        var vp = getViewport(d.series);
-        var view = vp.end - vp.start + 1;
-        var x = (e.clientX - rect.left);
-        var idx = Math.round( (x / (canvas._cssW||1)) * (view - 1) );
-        state.hover = { x:x, idx: idx };
-        drawChart(state.active);
-      }
-      if(!state.pan) return;
-      var s = state.data[state.active]?.series || [];
-      if (s.length < 2) return;
-      var dx = (e.clientX - rect.left) - state.pan.x;
-      var vp2 = getViewport(s);
-      var perPx = vp2.view / (canvas._cssW || 1);
-      var shift = Math.round(dx * perPx);
-      var maxOffset = Math.max(0, s.length - vp2.view);
-      // sinal invertido para arrastar “natural”
-      state.offset = clamp(state.pan.startOffset - shift, 0, maxOffset);
+      if(!(d && d.series.length)) return;
+      var vp = getViewport(d.series);
+      var view = vp.end - vp.start + 1;
+      var x = (e.clientX - rect.left);
+      var idx = Math.round( (x / (canvas._cssW||1)) * (view - 1) );
+      state.hover = { x:x, idx: idx };
       drawChart(state.active);
     });
     on(canvas, "mouseleave", function(){ state.hover=null; drawChart(state.active); });
   }
 
-  // ===== Botões de TF (barra do rodapé) =====
+  // ===== Botões TF e Zoom (+/-) =====
   function wireTfBars(){
-    document.querySelectorAll(".tfbar .tf").forEach(function(btn){
+    document.querySelectorAll(".tfbar .tf[data-tf]").forEach(function(btn){
       btn.addEventListener("click", function(){
-        var label = (btn.getAttribute("data-tf") || btn.textContent || "").trim();
-        setTimeframe(label);
+        var tf = btn.getAttribute("data-tf");
+        if(tf) setTimeframe(tf);
       });
     });
   }
   wireTfBars();
 
-  // ===== Botões de zoom (+ / -) =====
-  var zoomInBtn  = $("zoomIn");
-  var zoomOutBtn = $("zoomOut");
-  if (zoomInBtn){
-    on(zoomInBtn, "click", function(){ zoom(0.8); });   // 0.8 = aproxima mais rápido
-  }
-  if (zoomOutBtn){
-    on(zoomOutBtn, "click", function(){ zoom(1.25); }); // 1.25 = afasta
-  }
+  var zoomInBtn  = $("zoomInBtn");
+  var zoomOutBtn = $("zoomOutBtn");
+  if (zoomInBtn)  zoomInBtn.addEventListener("click", function(){ zoom(1); });
+  if (zoomOutBtn) zoomOutBtn.addEventListener("click", function(){ zoom(-1); });
 
 })();
