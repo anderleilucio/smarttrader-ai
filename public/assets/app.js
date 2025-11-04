@@ -279,14 +279,18 @@
 
   // ===== Dados =====
 
-  // fetchQuote com opção de “anchorOnly” (não apendar ponto novo na série)
+  // >>> fetchQuote: ATUALIZA SÓ O ÚLTIMO PONTO DA SÉRIE <<<
   async function fetchQuote(sym, opts){
     opts = opts || {};
-    var anchorOnly = !!opts.anchorOnly;
-    var ds = state.data[sym] || (state.data[sym] = { px:null, chg:0, series:[], times:[] });
+    var ds = state.data[sym] || (state.data[sym] = {
+      px:null, chg:0, series:[], times:[]
+    });
 
     try{
-      var r = await fetch('/api/quote?symbol='+encodeURIComponent(sym)+'&_='+Date.now(), { cache:'no-store' });
+      var r = await fetch(
+        '/api/quote?symbol='+encodeURIComponent(sym)+'&_='+Date.now(),
+        { cache:'no-store' }
+      );
       var j = await r.json();
       if (j && j.px != null){
         ds.px  = Number(j.px);
@@ -301,19 +305,22 @@
       }
     }
 
-    // atualiza a série (apenas no loop periódico normal)
-    if (!anchorOnly && ds.series && ds.series.length){
+    // Atualiza SOMENTE o último candle da série
+    if (ds.series && ds.series.length){
       var now = Date.now();
-      ds.series.push(ds.px);
-      ds.times.push(now);
-      while (ds.series.length > HISTORY_LEN) ds.series.shift();
-      while (ds.times.length  > HISTORY_LEN) ds.times.shift();
+      var lastIdx = ds.series.length - 1;
+      ds.series[lastIdx] = ds.px;
+      ds.times[lastIdx]  = now;
+    } else if (ds.px != null){
+      // caso raro em que ainda não existe série
+      var now2 = Date.now();
+      ds.series = [ds.px];
+      ds.times  = [now2];
     }
   }
 
   async function loadSeries(sym, apiTf, force) {
     var ds = state.data[sym] || (state.data[sym] = { px:null, chg:0, series:[], times:[] });
-    var hadSeries = ds.series && ds.series.length;
 
     try{
       var r = await fetch(
@@ -333,7 +340,7 @@
       // se der erro, mantemos a série antiga (se existir)
     }
 
-    // tenta ancorar no último preço atual, mas sem apendar novo ponto
+    // ancora no último preço atual (sem adicionar ponto novo)
     await fetchQuote(sym, { anchorOnly:true });
 
     // se ainda assim não houver série, cria uma série fake em torno do preço atual
