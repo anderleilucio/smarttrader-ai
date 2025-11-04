@@ -1,4 +1,4 @@
-/* public/assets/app.js — SmartTrader AI (Robinhood-like TFs + fallbacks + zoom, FIX) */
+/* public/assets/app.js — SmartTrader AI (TFs Robinhood + zoom, série estável) */
 (function () {
   "use strict";
 
@@ -7,7 +7,7 @@
   var HISTORY_LEN = 1200; // suporta 1D em 1m e 1W em 5m com folga
   var DEFAULTS    = ["TSLA","NVDA","AAPL","AMZN","MSFT","ITUB4","VALE3","PETR4"];
 
-  // Pontos por janela (para zoom inicial de cada TF)
+  // Pontos por janela (zoom inicial de cada TF)
   var TF_POINTS = {
     // Robinhood-like (rótulos da UI)
     "1D": 300, "1W": 300, "1M": 300, "2M": 300, "3M": 300,
@@ -34,7 +34,6 @@
     alerts: [],
     viewN: TF_POINTS[DEFAULT_TF_LABEL],
     offset: 0,
-    pan: null,
     tf: DEFAULT_API_TF,       // token da API
     tfLabel: DEFAULT_TF_LABEL,// rótulo atual (1D, 1W, 1M...)
     hover: null               // {x, idx} para tooltip/crosshair
@@ -264,7 +263,7 @@
     n = clamp(n, 20, HISTORY_LEN);
 
     var now = Date.now();
-    var spanMs = 3 * 60 * 60 * 1000; // ~3h só para espaçamento
+    var spanMs = 3 * 60 * 60 * 1000; // ~3h só pra espaçamento
     var step = Math.floor(spanMs / Math.max(1, n-1));
 
     var s = [], t = [];
@@ -282,7 +281,7 @@
 
   // ===== Dados =====
 
-  // fetchQuote AGORA **NÃO** mexe na série, só px/chg
+  // /api/quote: só atualiza preço e % — NÃO mexe na série
   async function fetchQuote(sym){
     var ds = state.data[sym] || (state.data[sym] = {
       px:null, chg:0, series:[], times:[]
@@ -307,7 +306,7 @@
     }
   }
 
-  // loadSeries: pega histórico + ancora UMA VEZ no preço atual
+  // /api/series: cuida de TODO o formato do gráfico
   async function loadSeries(sym, apiTf, force) {
     var ds = state.data[sym] || (state.data[sym] = {
       px:null, chg:0, series:[], times:[]
@@ -328,31 +327,12 @@
         });
       }
     }catch(e){
-      // se der erro, mantemos a série antiga (se existir)
+      // mantém série antiga se tiver
     }
 
-    // pega preço atual
-    await fetchQuote(sym);
-
-    // ancora só UMA VEZ o último ponto com o px atual
-    if (ds.px != null && ds.series && ds.series.length){
-      var now = Date.now();
-      var lastIdx = ds.series.length - 1;
-      if (now - ds.times[lastIdx] > 90_000){
-        // se o último ponto é antigo, cria um ponto novo no final
-        ds.series.push(ds.px);
-        ds.times.push(now);
-        while (ds.series.length > HISTORY_LEN) ds.series.shift();
-        while (ds.times.length  > HISTORY_LEN) ds.times.shift();
-      } else {
-        // só sobrescreve o último candle
-        ds.series[lastIdx] = ds.px;
-        ds.times[lastIdx]  = now;
-      }
-    }
-
-    // se ainda assim não houver série, cria uma fake em volta do preço
+    // se ainda assim não houver série, gera uma fake em volta do preço atual
     if (!ds.series || !ds.series.length){
+      await fetchQuote(sym);
       ensureFallbackSeries(ds);
     }
 
