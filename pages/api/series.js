@@ -1,129 +1,124 @@
 // pages/api/series.js
-
-// Converte timeframe (do front) em parâmetros da Finnhub
-function tfToFinnhub(tf) {
-  const t = String(tf || "24h").toLowerCase();
-
-  // intraday / curtos (tokens antigos, usados pelo front)
-  if (t === "1m")   return { res: 1,   lookbackMin: 15 };       // 15 min em 1m
-  if (t === "1h")   return { res: 1,   lookbackMin: 8 * 60 };   // ~1 dia em 1m
-  if (t === "5h")   return { res: 5,   lookbackMin: 24 * 60 };  // 1 dia em 5m
-  if (t === "12h")  return { res: 15,  lookbackMin: 24 * 60 };  // 1 dia em 15m
-
-  // 1D / 24h (Robinhood 1D)
-  if (t === "24h" || t === "1d") {
-    return { res: 5, lookbackMin: 10 * 60 };                    // ~10h em 5m
-  }
-
-  // 1 semana (Robinhood 1W)
-  if (t === "1w") {
-    return { res: 30, lookbackDays: 7 };                        // 7 dias em 30m
-  }
-
-  // 1 mês (Robinhood 1M)
-  if (t === "1mo" || t === "1mth") {
-    return { res: 60, lookbackDays: 32 };                       // ~1 mês em 1h
-  }
-
-  // 2–3 meses (tokens antigos do front)
-  if (t === "2mo") {
-    return { res: "D", lookbackDays: 70 };                      // ~2 meses diário
-  }
-  if (t === "3mo") {
-    return { res: "D", lookbackDays: 100 };                     // ~3 meses diário
-  }
-
-  // YTD / 1 ano / 5 anos / MAX (Robinhood)
-  if (t === "ytd") {
-    return { res: "D", lookbackDays: 365 };                     // ~1 ano
-  }
-  if (t === "1y") {
-    return { res: "D", lookbackDays: 365 };                     // idem, 1 ano
-  }
-  if (t === "5y") {
-    return { res: "D", lookbackDays: 365 * 5 };                 // ~5 anos
-  }
-  if (t === "max") {
-    return { res: "D", lookbackDays: 365 * 10 };                // até ~10 anos
-  }
-
-  // default: 1D
-  return { res: 5, lookbackMin: 10 * 60 };
-}
-
-// mantém no máximo n candles
-const clampLen = (arr, n = 1200) => arr.slice(-n);
+// Devolve série histórica para o gráfico: { t:[], c:[] }
 
 export default async function handler(req, res) {
-  const { symbol = "", tf = "24h" } = req.query;
-  if (!symbol) return res.status(400).json({ error: "symbol required" });
-
-  const mapBR = (s) => (/\d$/.test(s) ? `${s}.SA` : s);
-  const finnhubKey = process.env.FINNHUB_KEY;
-
   try {
-    if (finnhubKey) {
-      const { res: resolution, lookbackMin, lookbackDays } = tfToFinnhub(tf);
-      const now = Math.floor(Date.now() / 1000);
+    const { symbol, tf = "24h" } = req.query;
 
-      const from = lookbackDays
-        ? now - lookbackDays * 86400
-        : now - (lookbackMin || 60) * 60;
+    if (!symbol) {
+      res.status(400).json({ error: "Missing symbol" });
+      return;
+    }
 
-      const sym = mapBR(symbol.toUpperCase());
-      const url = `https://finnhub.io/api/v1/stock/candle?symbol=${encodeURIComponent(
-        sym
-      )}&resolution=${resolution}&from=${from}&to=${now}&token=${finnhubKey}`;
+    const apiKey = process.env.FINNHUB_API_KEY || process.env.FINNHUB_KEY;
+    const useFake = !apiKey; // se não tiver key, gera série fake
 
-      const r = await fetch(url, { cache: "no-store" });
-      if (!r.ok) throw new Error("finnhub series error");
-      const j = await r.json(); // { t:[], c:[], s:"ok" }
+    const tfToken = String(tf).toLowerCase();
 
-      // se a API não retornar dados úteis, cai no fallback
-      if (
-        j.s !== "ok" ||
-        !Array.isArray(j.t) ||
-        !Array.isArray(j.c) ||
-        j.t.length === 0 ||
-        j.c.length === 0
-      ) {
-        throw new Error("no data");
+    // === 1) Mapeia timeframe para janela/resolution (em segundos) ===
+    const nowSec = Math.floor(Date.now() / 1000);
+    let fromSec = nowSec - 24 * 60 * 60; // fallback: 1D
+    let resolution = 5;                  // em minutos (padrão Finnhub)
+
+    switch (tfToken) {
+      case "1m": // últimos ~60 minutos
+        fromSec = nowSec - 60 * 60;
+        resolution = 1;
+        break;
+      case "24h":
+      case "1d":
+        fromSec = nowSec - 24 * 60 * 60;
+        resolution = 5;
+        break;
+      case "1w":
+        fromSec = nowSec - 7 * 24 * 60 * 60;
+        resolution = 15;
+        break;
+      case "1mo":
+        fromSec = nowSec - 30 * 24 * 60 * 60;
+        resolution = 60;
+        break;
+      case "2mo":
+        fromSec = nowSec - 60 * 24 * 60 * 60;
+        resolution = 60;
+        break;
+      case "3mo":
+        fromSec = nowSec - 90 * 24 * 60 * 60;
+        resolution = 60;
+        break;
+      case "ytd":
+        // do começo do ano até agora
+        const yearStart = new Date();
+        yearStart.setUTCMonth(0, 1);
+        yearStart.setUTCHours(0, 0, 0, 0);
+        fromSec = Math.floor(yearStart.getTime() / 1000);
+        resolution = 60 * 24; // diário
+        break;
+      default:
+        // qualquer outra coisa: 3 meses diário
+        fromSec = nowSec - 90 * 24 * 60 * 60;
+        resolution = 60 * 24;
+        break;
+    }
+
+    // === 2) Se não tiver API key, devolve série fake (o front aceita) ===
+    if (useFake) {
+      const points = 300;
+      const t = [];
+      const c = [];
+      const span = nowSec - fromSec;
+      const step = Math.max(1, Math.floor(span / points));
+      let last = 100 + Math.random() * 100;
+      for (let i = 0; i < points; i++) {
+        const ts = fromSec + i * step;
+        last = last * (1 + (Math.random() - 0.5) / 50); // +/-1%
+        t.push(ts);
+        c.push(Number(last.toFixed(2)));
       }
-
-      return res.status(200).json({
-        t: clampLen(
-          j.t.map((x) => (typeof x === "number" ? x : Number(x))).filter(Number.isFinite),
-          1200
-        ),
-        c: clampLen(
-          j.c.map((x) => Number(x)).filter(Number.isFinite),
-          1200
-        ),
-      });
+      res.status(200).json({ t, c });
+      return;
     }
 
-    // --- fallback sem chave (random walk coerente) ---
-    const n = 300;
-    const start = 100 + Math.random() * 100;
-    const c = [start];
-    for (let i = 1; i < n; i++) {
-      c.push(c[i - 1] * (1 + (Math.random() - 0.5) / 80)); // variação suave
+    // === 3) Monta o símbolo para Finnhub (B3 ganha .SA) ===
+    function mapSymbol(sym) {
+      const s = String(sym).toUpperCase();
+      if (/\d$/.test(s)) return s + ".SA"; // ITUB4 -> ITUB4.SA
+      return s;
     }
-    const tick = 60 * 15; // 15 min
-    const now = Math.floor(Date.now() / 1000);
-    const t = Array.from({ length: n }, (_, i) => now - (n - 1 - i) * tick);
-    return res.status(200).json({ t, c });
-  } catch (e) {
-    // --- fallback de emergência se a API falhar / símbolo estranho (GOLD, etc.) ---
-    const n = 200;
-    const start = 100 + Math.random() * 50;
-    const c = [start];
-    for (let i = 1; i < n; i++) {
-      c.push(c[i - 1] * (1 + (Math.random() - 0.5) / 90));
+
+    const finnhubSymbol = mapSymbol(symbol);
+
+    const url =
+      "https://finnhub.io/api/v1/stock/candle" +
+      `?symbol=${encodeURIComponent(finnhubSymbol)}` +
+      `&resolution=${encodeURIComponent(resolution)}` +
+      `&from=${fromSec}` +
+      `&to=${nowSec}` +
+      `&token=${encodeURIComponent(apiKey)}`;
+
+    const resp = await fetch(url);
+    if (!resp.ok) {
+      // se a API falhar, devolve vazio (front gera fallback bonitinho)
+      res.status(200).json({ t: [], c: [] });
+      return;
     }
-    const tick = 60 * 30; // 30 min
-    const now = Math.floor(Date.now() / 1000);
-    const t = Array.from({ length: n }, (_, i) => now - (n - 1 - i) * tick);
-    return res.status(200).json({ t, c });
+
+    const data = await resp.json();
+    // Finnhub responde { s:"ok"|"no_data", t:[...], c:[...] }
+    if (!data || data.s !== "ok" || !Array.isArray(data.t) || !Array.isArray(data.c)) {
+      res.status(200).json({ t: [], c: [] });
+      return;
+    }
+
+    // Limitamos a HISTORY_LEN no front, mas já cortamos aqui também por via das dúvidas
+    const HISTORY_LEN = 1200;
+    const t = data.t.slice(-HISTORY_LEN);
+    const c = data.c.slice(-HISTORY_LEN);
+
+    res.status(200).json({ t, c });
+  } catch (err) {
+    console.error("Error in /api/series:", err);
+    // em último caso manda vazio (front faz fallback)
+    res.status(200).json({ t: [], c: [] });
   }
 }
